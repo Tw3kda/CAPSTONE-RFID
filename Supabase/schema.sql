@@ -9,6 +9,7 @@
 --    recursos      Catalogo + que tag RFID lleva cada recurso + en que
 --                  lector va + donde esta ahora mismo.
 --    eventos       Historial. El ESP32 solo escribe aqui.
+--    usuarios      Quien puede entrar al stand (ID universitario / QR).
 --
 --  El ESP32 manda eventos "en bruto" (UID + numero de lector). Un trigger
 --  los traduce a recurso, decide si esta en el lugar correcto y actualiza
@@ -286,7 +287,76 @@ create trigger eventos_procesar
 
 
 -- ---------------------------------------------------------------------
--- 4. FUNCIONES Y VISTAS
+-- 4. USUARIOS
+-- ---------------------------------------------------------------------
+--  Personas que pueden entrar al stand con su credencial universitaria
+--  (QR o ID escrito). Se dan de alta en Table Editor -> usuarios.
+--
+--  La tabla NO es legible con la anon key, para que nadie pueda sacar la
+--  lista de estudiantes. La app solo puede preguntar por un ID concreto
+--  con la funcion identificar().
+
+create table if not exists public.usuarios (
+  id            text primary key,          -- ID universitario: '20261234'
+  nombre        text not null,
+  apellido      text,
+  rol           text not null default 'estudiante'
+                check (rol in ('estudiante', 'docente', 'admin')),
+  activo        boolean not null default true,   -- false = no puede entrar
+  codigo_qr     text unique,               -- solo si el QR no contiene el mismo ID
+  creado_en     timestamptz not null default now(),
+  ultimo_acceso timestamptz,
+
+  constraint usuarios_id_valido check (id = btrim(id) and id <> ''),
+  constraint usuarios_qr_valido check (codigo_qr is null or (codigo_qr = btrim(codigo_qr) and codigo_qr <> ''))
+);
+
+-- Primer paso del login (y busqueda del destinatario de un prestamo).
+-- Recibe lo que se escribio o lo que leyo el QR. Devuelve una fila si el
+-- usuario existe y esta activo, o ninguna si no.
+--   supabase.rpc('identificar', { p_codigo: '20261234' })
+--   supabase.rpc('identificar', { p_codigo: '20265678', p_registrar_acceso: false })
+create or replace function public.identificar(p_codigo text, p_registrar_acceso boolean default true)
+returns table (id text, nombre text, apellido text, completo text, rol text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_codigo text := btrim(coalesce(p_codigo, ''));
+  u public.usuarios%rowtype;
+begin
+  if v_codigo = '' then
+    return;
+  end if;
+
+  select * into u
+    from usuarios
+   where (usuarios.id = v_codigo or usuarios.codigo_qr = v_codigo)
+     and usuarios.activo
+   order by (usuarios.id = v_codigo) desc
+   limit 1;
+
+  if not found then
+    return;
+  end if;
+
+  if p_registrar_acceso then
+    update usuarios set ultimo_acceso = now() where usuarios.id = u.id;
+  end if;
+
+  id       := u.id;
+  nombre   := u.nombre;
+  apellido := u.apellido;
+  completo := btrim(u.nombre || ' ' || coalesce(u.apellido, ''));
+  rol      := u.rol;
+  return next;
+end
+$$;
+
+
+-- ---------------------------------------------------------------------
+-- 5. FUNCIONES Y VISTAS
 -- ---------------------------------------------------------------------
 
 -- Latido: el ESP32 la llama cada 30 s para decir "sigo vivo".
@@ -348,15 +418,21 @@ as
 
 
 -- ---------------------------------------------------------------------
--- 5. SEGURIDAD
+-- 6. SEGURIDAD
 -- ---------------------------------------------------------------------
---  Con la anon key se puede: leer las tres tablas, insertar eventos y
---  llamar a latido() y senalizar(). No se puede modificar ni borrar nada.
---  El mapeo se edita desde el panel de Supabase, que no pasa por estas reglas.
+--  Con la anon key se puede: leer dispositivos, recursos y eventos,
+--  insertar eventos y llamar a latido(), senalizar() e identificar().
+--  No se puede modificar ni borrar nada, ni leer la tabla usuarios.
+--  Los datos se editan desde el panel de Supabase, que no pasa por estas reglas.
 
 alter table public.dispositivos enable row level security;
 alter table public.recursos     enable row level security;
 alter table public.eventos      enable row level security;
+alter table public.usuarios     enable row level security;
+
+-- usuarios: sin politicas y sin permisos. Supabase da permisos por defecto
+-- a cada tabla nueva; aqui se quitan.
+revoke all on public.usuarios from anon, authenticated;
 
 drop policy if exists "leer dispositivos" on public.dispositivos;
 create policy "leer dispositivos" on public.dispositivos
@@ -379,10 +455,11 @@ grant select on public.senales, public.dispositivos_estado to anon, authenticate
 grant insert on public.eventos to anon, authenticated;
 grant execute on function public.latido(text, int, text, text, int) to anon, authenticated;
 grant execute on function public.senalizar(text, int) to anon, authenticated;
+grant execute on function public.identificar(text, boolean) to anon, authenticated;
 
 
 -- ---------------------------------------------------------------------
--- 6. TIEMPO REAL
+-- 7. TIEMPO REAL
 -- ---------------------------------------------------------------------
 --  Permite que la app se entere al instante de cada cambio.
 
@@ -403,8 +480,18 @@ $$;
 
 
 -- ---------------------------------------------------------------------
--- 7. DATOS INICIALES
+-- 8. DATOS INICIALES
 -- ---------------------------------------------------------------------
+--  Usuarios de prueba: los de la maqueta de la app. El ID de Santiago no
+--  aparece en la maqueta y es inventado. Cambiarlos o borrarlos en
+--  Table Editor -> usuarios.
+
+insert into public.usuarios (id, nombre, apellido, rol)
+values
+  ('20261234', 'Rafael',   'Salcedo', 'estudiante'),
+  ('20265678', 'Santiago', 'Navarro', 'estudiante')
+on conflict (id) do nothing;
+
 --  El catalogo es el de la maqueta de la app. Los tres tags son los que
 --  estaban escritos en el sketch original, uno por lector; a que recurso
 --  corresponde cada uno es una suposicion: corregirlo en

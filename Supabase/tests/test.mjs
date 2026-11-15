@@ -135,6 +135,31 @@ ok(d.en_linea === true, 'tras latido: en linea')
 await db.exec(`select latido('stand-99', 1, 'v2', '10.0.0.2', -70)`)
 ok((await filas(`select count(*)::int n from dispositivos`))[0].n === 2, 'un stand nuevo se registra solo')
 
+// Login: identificar por ID universitario o QR
+const ident = async (codigo, registrar) =>
+  filas(`select * from identificar(${codigo === null ? 'null' : `'${codigo}'`}${registrar === undefined ? '' : `, ${registrar}`})`)
+let u = await ident('20261234')
+ok(u.length === 1 && u[0].completo === 'Rafael Salcedo' && u[0].rol === 'estudiante', 'identificar(20261234) -> Rafael Salcedo')
+ok((await ident('  20261234 ')).length === 1, 'identificar ignora espacios alrededor')
+ok((await ident('99999999')).length === 0, 'ID inexistente -> sin filas')
+ok((await ident('')).length === 0 && (await ident(null)).length === 0, 'vacio o null -> sin filas')
+await db.exec(`reset role;
+  update usuarios set codigo_qr = 'QR-ABC-001' where id = '20265678';
+  update usuarios set ultimo_acceso = null;
+  insert into usuarios (id, nombre, activo) values ('20260001', 'Baja', false);
+  set role anon`)
+u = await ident('QR-ABC-001', false)
+ok(u.length === 1 && u[0].id === '20265678' && u[0].completo === 'Santiago Navarro', 'identificar por codigo_qr')
+ok((await ident('20260001')).length === 0, 'usuario inactivo -> sin filas')
+await ident('20261234')
+await db.exec(`reset role`)
+const accesos = await filas(`select id, ultimo_acceso is not null as entro from usuarios where id in ('20261234','20265678') order by id`)
+ok(accesos[0].entro === true && accesos[1].entro === false, 'ultimo_acceso solo se marca en el login, no al buscar destinatario')
+err = null
+try { await db.exec(`insert into usuarios (id, nombre) values (' 123', 'x')`) } catch (x) { err = x }
+ok(err && /usuarios_id_valido/.test(err.message), 'ID con espacios se rechaza')
+await db.exec(`set role anon`)
+
 // Reinicio del ESP32: nuevo arranque, seq vuelve a 1, lo ausente se limpia
 await insertar([ev(1, 'INICIO', null, null, 0, 2), ev(2, 'PRESENTE', '06F123CE', 3, 0, 2)])
 ok((await rec('ACT-004')).presente === false && (await rec('ACT-001')).presente === true, 'INICIO limpia y PRESENTE repone')
@@ -145,6 +170,8 @@ for (const q of [
   `delete from eventos`,
   `insert into recursos (id, nombre) values ('X','x')`,
   `update dispositivos set nombre='x'`,
+  `select * from usuarios`,
+  `update usuarios set rol='admin'`,
 ]) {
   err = null
   try { await db.exec(q) } catch (x) { err = x }

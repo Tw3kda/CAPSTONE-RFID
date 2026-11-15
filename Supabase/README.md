@@ -16,6 +16,22 @@
 | `recursos` | Catálogo, qué tag lleva cada recurso, en qué lector va y dónde está ahora | Admin (panel) y el trigger |
 | `eventos` | Historial de todo lo que detectan los lectores | El ESP32 (solo inserta) |
 | `dispositivos` | Cada stand ESP32 y su último latido | El ESP32 y el trigger |
+| `usuarios` | Quién puede entrar al stand (ID universitario / QR) | Admin (panel) |
+
+### `usuarios`
+
+| Columna | Significado |
+|---|---|
+| `id` | ID universitario, el que se escribe o lleva el QR (`20261234`) |
+| `nombre`, `apellido` | Para mostrar en la app |
+| `rol` | `estudiante`, `docente` o `admin` |
+| `activo` | `false` = no puede entrar (sin borrar su historial) |
+| `codigo_qr` | Solo si el QR de la credencial no contiene el mismo ID |
+| `ultimo_acceso` | Última vez que entró (lo escribe `identificar`) |
+
+Se dan de alta en **Table Editor → `usuarios`**. Vienen dos de prueba de la maqueta: `20261234` Rafael Salcedo y `20265678` Santiago Navarro (este ID es inventado).
+
+La anon key **no puede leer esta tabla**, para que nadie saque la lista de estudiantes. La app solo puede preguntar por un ID concreto con `identificar`.
 
 ### `recursos`
 
@@ -64,6 +80,8 @@ Todo se lee con la anon key. La app puede:
 
 | Necesidad de la app | Cómo |
 |---|---|
+| Login (QR o ID universitario) | `rpc('identificar', { p_codigo: '20261234' })` → `[{ id, nombre, apellido, completo, rol }]`, o `[]` si no existe o está inactivo |
+| Buscar al destinatario de un préstamo | Igual, con `p_registrar_acceso: false` para no marcarle un acceso |
 | Disponible / Prestado | `recursos.presente` (y `en_revision`) |
 | Esperar la lectura RFID en vivo | Realtime sobre `eventos` (INSERT), filtrando por `recurso_id` |
 | Recurso inesperado / incorrecto | Evento con `resultado` ≠ `OK`, o `recurso_id` distinto del esperado |
@@ -72,13 +90,15 @@ Todo se lee con la anon key. La app puede:
 | Stand desconectado | Vista `dispositivos_estado` (`en_linea`) |
 | Historial y análisis | `eventos` ordenado por `ocurrido_en` |
 
-El ESP32 no sabe **quién** retira: eso lo pone la app. La tabla de préstamos y usuarios todavía no existe; queda para el backend.
+El ESP32 no sabe **quién** retira: eso lo pone la app. La tabla de préstamos todavía no existe; queda para el backend.
+
+Entrar solo con el ID no es una autenticación real: quien conozca el ID de otra persona puede entrar como ella. Vale para el prototipo; para algo real habría que usar Supabase Auth.
 
 La anon key **no** puede modificar `recursos` ni borrar nada. Para que la app edite el catálogo hará falta añadir reglas para usuarios autenticados.
 
 ## Pruebas
 
-`tests/` ejecuta `schema.sql` en un Postgres local y simula al ESP32 (arranque, retiros, devoluciones en lugar incorrecto, tags desconocidos, reintentos duplicados, cambio de mapeo, LEDs, permisos). No toca el proyecto real.
+`tests/` ejecuta `schema.sql` en un Postgres local y simula al ESP32 y a la app (arranque, retiros, devoluciones en lugar incorrecto, tags desconocidos, reintentos duplicados, cambio de mapeo, LEDs, login, permisos). No toca el proyecto real.
 
 ```bash
 cd Supabase/tests && npm install && npm test
