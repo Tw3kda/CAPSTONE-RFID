@@ -5,9 +5,11 @@
 //  un tag aparece o desaparece de un lector, mandando el UID en bruto y
 //  el numero de lector. Supabase decide a que recurso corresponde.
 //
-//  Que tag va en que lector NO se escribe aqui: se edita en Supabase
-//  (Table Editor -> recursos, columnas uid_tag y lector). El ESP32
-//  descarga esa tabla al encender y cada 30 s.
+//  Que objeto va en que lector NO se escribe aqui: se edita en Supabase
+//  (Table Editor -> recursos, columnas uid_tag y lector). Cada lector
+//  tiene un solo objeto correcto. El ESP32 descarga esa tabla al
+//  encender y cada 10 s, asi que un cambio llega sin volver a cargar
+//  el sketch.
 //
 //  Placa: ESP32 Dev Module.  Libreria: RFID_MFRC522v2.
 // =====================================================================
@@ -49,15 +51,20 @@ MFRC522DriverPinSimple ss_pin2(4);
 MFRC522DriverSPI driver2{ss_pin2};
 MFRC522 lector2{driver2};
 
+// LECTOR 3 - CAJON 3
+MFRC522DriverPinSimple ss_pin3(25);
+MFRC522DriverSPI driver3{ss_pin3};
+MFRC522 lector3{driver3};
+
 // Para agregar un lector: copiar las tres lineas de arriba con otro pin
 // y agregarlo a estas dos listas.
-MFRC522* const LECTORES[] = { &lector1, &lector2 };
+MFRC522* const LECTORES[] = { &lector1, &lector2, &lector3 };
 
 // LED indicador de cada lector, en el mismo orden. -1 = ese lector no
 // tiene LED.
 //   Encendido fijo   -> la app pide senalar ese sitio
 //   Parpadeo rapido  -> hay un objeto que no va en ese sitio
-const int8_t PIN_LED[] = { 22, 17 };
+const int8_t PIN_LED[] = { 22, 17, 26 };
 
 const uint8_t NUM_LECTORES = sizeof(LECTORES) / sizeof(LECTORES[0]);
 static_assert(sizeof(PIN_LED) / sizeof(PIN_LED[0]) == sizeof(LECTORES) / sizeof(LECTORES[0]),
@@ -71,7 +78,7 @@ static_assert(sizeof(PIN_LED) / sizeof(PIN_LED[0]) == sizeof(LECTORES) / sizeof(
 
 const unsigned long TIMEOUT          = 800;    // ms sin leer un tag = fue retirado
 const unsigned long TIEMPO_ARRANQUE  = 3000;   // ms iniciales: solo se hace inventario
-const unsigned long CADA_CONFIG      = 30000;  // descargar el mapeo
+const unsigned long CADA_CONFIG      = 10000;  // descargar el mapeo
 const unsigned long CADA_SENALES     = 2000;   // preguntar que LED encender
 const unsigned long CADA_LATIDO      = 30000;  // avisar "sigo vivo"
 const unsigned long ESPERA_REINTENTO = 2000;   // tras un envio fallido
@@ -372,14 +379,28 @@ void guardarConfig() {
   memoria.end();
 }
 
+// Muestra que objeto espera cada lector segun Supabase.
 void imprimirConfig() {
-  Serial.printf("[CONFIG] %u recursos asignados a %s\n", numRecursos, DISPOSITIVO_ID);
+  Serial.printf("[CONFIG] Mapeo de %s:\n", DISPOSITIVO_ID);
+
+  for (uint8_t lector = 1; lector <= NUM_LECTORES; lector++) {
+    Serial.printf("  CAJON %u: ", lector);
+    bool alguno = false;
+    for (uint8_t i = 0; i < numRecursos; i++) {
+      if (recursos[i].lector == lector) {
+        Serial.printf("%s%s (tag %s)", alguno ? ", " : "", recursos[i].id, recursos[i].uid);
+        alguno = true;
+      }
+    }
+    Serial.println(alguno ? "" : "(sin objeto asignado)");
+  }
+
   for (uint8_t i = 0; i < numRecursos; i++) {
-    Serial.printf("  %-10s tag %-20s ", recursos[i].id, recursos[i].uid);
-    if (recursos[i].lector) {
-      Serial.printf("cajon %u\n", recursos[i].lector);
-    } else {
-      Serial.println("cualquier cajon");
+    if (recursos[i].lector == 0) {
+      Serial.printf("  CUALQUIER CAJON: %s (tag %s)\n", recursos[i].id, recursos[i].uid);
+    } else if (recursos[i].lector > NUM_LECTORES) {
+      Serial.printf("  AVISO: %s asignado al cajon %u, que no existe en este stand\n",
+                    recursos[i].id, recursos[i].lector);
     }
   }
 }

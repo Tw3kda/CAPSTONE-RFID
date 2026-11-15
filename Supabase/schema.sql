@@ -63,10 +63,11 @@ create table if not exists public.recursos (
   posicion    int,
   en_revision boolean not null default false,
 
-  -- Mapeo: ESTO ES LO QUE SE EDITA para cambiar que tag va en que lector
+  -- Mapeo: ESTO ES LO QUE SE EDITA para cambiar que objeto va en que
+  -- lector. El ESP32 lo vuelve a leer cada 10 s.
   uid_tag        text unique,              -- UID del tag pegado al recurso
   dispositivo_id text references public.dispositivos (id),
-  lector         int,                      -- lector asignado; vacio = cualquiera
+  lector         int,                      -- lector asignado (uno por objeto); vacio = cualquiera
 
   -- Estado en vivo: lo escribe el trigger, no editar a mano
   presente           boolean not null default false,
@@ -84,6 +85,60 @@ create table if not exists public.recursos (
 
 create index if not exists recursos_dispositivo_idx
   on public.recursos (dispositivo_id);
+
+-- Un solo objeto correcto por lector.
+--
+-- La regla se comprueba al final de cada transaccion, no en cada UPDATE.
+-- Asi una funcion futura puede intercambiar dos objetos de lector en una
+-- sola transaccion sin chocar a mitad de camino:
+--   begin;
+--   update recursos set lector = 2 where id = 'ACT-004';
+--   update recursos set lector = 1 where id = 'ACT-007';
+--   commit;
+do $$
+declare
+  repetidos text;
+begin
+  -- Quien ejecuto la version anterior de este script tiene dos objetos en
+  -- el lector 1. Se pasan al reparto nuevo, solo si siguen sin tocar.
+  if exists (select 1 from public.recursos
+              where id = 'ACT-007' and uid_tag = '15F9DD00' and dispositivo_id = 'stand-01' and lector = 1)
+     and exists (select 1 from public.recursos
+              where id = 'ACT-001' and uid_tag = '06F123CE' and dispositivo_id = 'stand-01' and lector = 2)
+     and not exists (select 1 from public.recursos
+              where dispositivo_id = 'stand-01' and lector = 3)
+  then
+    update public.recursos set lector = 3 where id = 'ACT-001';
+    update public.recursos set lector = 2 where id = 'ACT-007';
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'recursos_lector_valido') then
+    alter table public.recursos
+      add constraint recursos_lector_valido
+      check (lector is null or (lector >= 1 and dispositivo_id is not null));
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'recursos_un_objeto_por_lector') then
+    select string_agg(format('%s lector %s: %s', dispositivo_id, lector, ids), '; ')
+      into repetidos
+      from (select dispositivo_id, lector, string_agg(id, ', ' order by id) ids
+              from public.recursos
+             where dispositivo_id is not null and lector is not null
+             group by 1, 2
+            having count(*) > 1) d;
+
+    if repetidos is not null then
+      raise exception 'Hay lectores con mas de un objeto asignado: %', repetidos
+        using hint = 'Deja un solo recurso por lector (columna lector en recursos) y vuelve a ejecutar el script.';
+    end if;
+
+    alter table public.recursos
+      add constraint recursos_un_objeto_por_lector
+      unique (dispositivo_id, lector)
+      deferrable initially deferred;
+  end if;
+end
+$$;
 
 create or replace function public.recursos_antes_guardar()
 returns trigger
@@ -351,8 +406,9 @@ $$;
 -- 7. DATOS INICIALES
 -- ---------------------------------------------------------------------
 --  El catalogo es el de la maqueta de la app. Los tres tags son los que
---  estaban escritos en el sketch original; a que recurso corresponde cada
---  uno es una suposicion: corregirlo en Table Editor -> recursos.
+--  estaban escritos en el sketch original, uno por lector; a que recurso
+--  corresponde cada uno es una suposicion: corregirlo en
+--  Table Editor -> recursos.
 
 insert into public.dispositivos (id, nombre)
 values ('stand-01', 'Stand de electronica')
@@ -362,8 +418,8 @@ insert into public.recursos
   (id, nombre, categoria, tipo, gabinete, estante, posicion, en_revision, uid_tag, dispositivo_id, lector)
 values
   ('ACT-004', 'Multímetro digital #04',     'Medición eléctrica', 'Equipo de medición', 'A', 2, 3, false, 'AF91D01C', 'stand-01', 1),
-  ('ACT-007', 'Kit de electrónica #07',     'Kits de práctica',   'Kit',                'B', 1, 1, false, '15F9DD00', 'stand-01', 1),
-  ('ACT-001', 'Generador de señales #01',   'Medición eléctrica', 'Equipo de medición', 'A', 1, 4, false, '06F123CE', 'stand-01', 2),
+  ('ACT-007', 'Kit de electrónica #07',     'Kits de práctica',   'Kit',                'B', 1, 1, false, '15F9DD00', 'stand-01', 2),
+  ('ACT-001', 'Generador de señales #01',   'Medición eléctrica', 'Equipo de medición', 'A', 1, 4, false, '06F123CE', 'stand-01', 3),
   ('ACT-002', 'Osciloscopio #02',           'Medición eléctrica', 'Equipo de medición', 'A', 1, 2, false, null, null, null),
   ('ACT-003', 'Fuente de alimentación #03', 'Alimentación',       'Fuente',             'A', 3, 2, false, null, null, null),
   ('ACT-005', 'Estación de soldadura #05',  'Herramientas',       'Herramienta',        'C', 1, 2, true,  null, null, null),

@@ -1,12 +1,19 @@
 # ESP32 · Stand RFID
 
-[`InventarioRFID/InventarioRFID.ino`](InventarioRFID/InventarioRFID.ino) lee los RC522 y envía a Supabase cada tag que aparece o desaparece.
+[`InventarioRFID/InventarioRFID.ino`](InventarioRFID/InventarioRFID.ino) lee 3 lectores RC522 y envía a Supabase cada tag que aparece o desaparece. Cada lector tiene **un objeto correcto**, definido en Supabase.
 
 ## Qué hace
 
 - **Envía eventos** con el UID y el número de lector: `DEVUELTO` cuando un tag aparece y `RETIRADO` cuando lleva 0,8 s sin leerse.
 - **Inventario al encender**: durante los primeros 3 s envía `PRESENTE` por cada tag que encuentra, y Supabase corrige lo que cambió mientras estuvo apagado.
-- **Mapeo desde Supabase**: descarga qué tag va en qué lector al conectar y cada 30 s, y lo guarda en la flash para funcionar sin WiFi.
+- **Mapeo desde Supabase**: qué objeto va en qué lector no está en el código. Lo descarga al conectar y cada 10 s, y lo guarda en la flash para funcionar sin WiFi. Al cambiarlo en Supabase, el stand lo aplica solo y muestra el nuevo reparto en el Serial Monitor:
+
+  ```
+  [CONFIG] Mapeo de stand-01:
+    CAJON 1: ACT-004 (tag AF91D01C)
+    CAJON 2: ACT-007 (tag 15F9DD00)
+    CAJON 3: ACT-001 (tag 06F123CE)
+  ```
 - **Sin WiFi** guarda hasta 64 eventos y los envía al volver, con su hora real. Los reintentos no duplican filas.
 - **Latido** cada 30 s para que la app sepa si el stand está en línea.
 - **Varios tags por lector** (hasta 4).
@@ -23,33 +30,35 @@
 ## Piezas
 
 - ESP32 DevKit (ESP32-WROOM)
-- 2 × lector RC522 y tags MIFARE de 13,56 MHz
-- 2 × LED + 2 × resistencia de 220–330 Ω
+- 3 × lector RC522 y tags MIFARE de 13,56 MHz
+- 3 × LED + 3 × resistencia de 220–330 Ω
 - Recomendado: condensador de 10–100 µF entre 3,3 V y GND
 
 ## Cableado
 
 | Señal | Pin ESP32 | Va a |
 |---|---|---|
-| 3,3 V | 3V3 | `3.3V` de los dos lectores |
+| 3,3 V | 3V3 | `3.3V` de los tres lectores |
 | GND | GND | `GND` de los lectores y cátodo de los LED |
-| SCK | GPIO 18 | `SCK` de los dos lectores |
-| MISO | GPIO 19 | `MISO` de los dos lectores |
-| MOSI | GPIO 23 | `MOSI` de los dos lectores |
+| SCK | GPIO 18 | `SCK` de los tres lectores |
+| MISO | GPIO 19 | `MISO` de los tres lectores |
+| MOSI | GPIO 23 | `MOSI` de los tres lectores |
 | SS lector 1 | GPIO 5 | `SDA` del lector 1 |
 | SS lector 2 | GPIO 4 | `SDA` del lector 2 |
+| SS lector 3 | GPIO 25 | `SDA` del lector 3 |
 | LED lector 1 | GPIO 22 | resistencia → ánodo del LED |
 | LED lector 2 | GPIO 17 | resistencia → ánodo del LED |
+| LED lector 3 | GPIO 26 | resistencia → ánodo del LED |
 
 `IRQ` y `RST` del RC522 quedan sin conectar (si un lector no responde, unir su `RST` a 3,3 V).
 
 > **No alimentar el RC522 con 5 V.** Es un componente de 3,3 V.
 
-- Separar los lectores al menos 10 cm para que un tag no se lea en los dos.
+- Separar los lectores al menos 10 cm para que un tag no se lea en dos a la vez.
 - Cables SPI cortos (menos de 20 cm).
-- Probar primero un lector solo y luego añadir el segundo.
+- Probar primero un lector solo y añadir los otros de uno en uno. Si al añadir uno fallan los demás, el problema está en el cableado de ese.
 
-Para añadir un lector, copiar las tres líneas de `LECTOR 2` con otro pin y añadirlo a `LECTORES[]` y `PIN_LED[]`.
+Para añadir un cuarto lector, copiar las tres líneas de `LECTOR 3` con otro pin libre (por ejemplo GPIO 27) y añadirlo a `LECTORES[]` y `PIN_LED[]`. En Supabase no hay que cambiar nada salvo asignarle un objeto.
 
 ## Arduino IDE
 
@@ -89,7 +98,7 @@ No subir a GitHub el sketch con la clave del WiFi.
 | `[WIFI] Sin WiFi` | SSID, clave y que la red sea de 2,4 GHz |
 | `[SUPABASE] Error 401` | Clave incorrecta o incompleta |
 | `[SUPABASE] Error 404` | No se ejecutó `schema.sql` |
-| `[CONFIG] 0 recursos` | Ningún recurso tiene `dispositivo_id` igual a `DISPOSITIVO_ID` |
+| `CAJON n: (sin objeto asignado)` | Ningún recurso tiene ese `lector` con `dispositivo_id` igual a `DISPOSITIVO_ID` |
 | `TAG DESCONOCIDO` | Ese UID no está en `recursos.uid_tag` |
 
 ## Seguridad

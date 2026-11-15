@@ -25,7 +25,7 @@
 | `en_revision` | Equipo en mantenimiento |
 | **`uid_tag`** | UID del tag pegado al recurso. Se acepta `AF91D01C`, `AF:91:D0:1C` o `0xAF, 0x91, …` |
 | **`dispositivo_id`** | Stand donde va (`stand-01`) |
-| **`lector`** | Lector de ese stand donde va. Vacío = cualquiera |
+| **`lector`** | Lector de ese stand donde va (1, 2, 3…). **Un solo objeto por lector.** Vacío = cualquiera |
 | `presente`, `dispositivo_actual`, `lector_actual`, `actualizado_en` | Estado en vivo. Los escribe el trigger: no editar a mano |
 | `senalizar_hasta` | Hasta cuándo está encendido el LED de su lector |
 
@@ -39,9 +39,22 @@
 | `resultado` | `OK`, `LUGAR_INCORRECTO` o `DESCONOCIDO` |
 | `ocurrido_en` | Hora real del evento (aunque haya llegado tarde por falta de WiFi) |
 
-## Cambiar qué tag va en qué lector
+## Cambiar qué objeto va en qué lector
 
-**Table Editor → `recursos`** y editar `uid_tag`, `dispositivo_id` y `lector`. El ESP32 descarga el cambio en menos de 30 s, sin volver a cargar el sketch.
+Reparto inicial: lector 1 → ACT-004 (tag `AF91D01C`), lector 2 → ACT-007 (`15F9DD00`), lector 3 → ACT-001 (`06F123CE`).
+
+**Table Editor → `recursos`** y editar `uid_tag`, `dispositivo_id` y `lector`. El ESP32 descarga el cambio en menos de 10 s, sin volver a cargar el sketch.
+
+La base de datos no deja asignar dos objetos al mismo lector. Para **intercambiar** dos objetos hay que hacerlo en una sola transacción (en el panel, liberar primero uno poniendo `lector` vacío). Desde SQL:
+
+```sql
+begin;
+update recursos set lector = 2 where id = 'ACT-004';
+update recursos set lector = 1 where id = 'ACT-007';
+commit;
+```
+
+Una futura función para cambiar objetos desde la app solo tiene que hacer esto: el ESP32 ya lee el reparto de Supabase. Esa función necesitará permisos para usuarios autenticados, porque la anon key no puede modificar `recursos`.
 
 Para registrar un tag nuevo: ponerlo sobre un lector; el Serial Monitor muestra `TAG DESCONOCIDO: XXXXXXXX` y la tabla `eventos` tiene una fila con `resultado = DESCONOCIDO` y ese `uid`. Copiar el UID en `uid_tag`.
 
