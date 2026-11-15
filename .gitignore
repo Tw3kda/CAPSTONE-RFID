@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+
+# Arduino: credenciales locales si se separan del sketch
+ESP32/**/secrets.h

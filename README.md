@@ -1,239 +1,28 @@
-# Smart RFID Inventory (ESP32)
+# Capstone · Inventario RFID
 
-Three RC522 readers watch three shelf positions. Each object carries an RFID tag.
-When someone takes an object off a reader, the ESP32:
+Stand de laboratorio con lectores RFID: detecta cuando se retira o se devuelve un recurso y lo registra en Supabase.
 
-- updates the LEDs,
-- pushes the change live to a web page it hosts itself,
-- saves a `RETIRADO` (borrowed) / `DEVUELTO` (returned) row in Supabase.
-
-Files in this folder:
-
-| File | What it is |
+| Carpeta | Qué contiene |
 |---|---|
-| `InventarioRFID.ino` | The ESP32 sketch |
-| `supabase.sql` | Creates the history table in Supabase |
-| `README.md` | This guide |
+| [`ESP32/`](ESP32/) | Firmware del stand (Arduino) y guía de cableado |
+| [`Supabase/`](Supabase/) | Base de datos: tablas, reglas de seguridad, lógica y pruebas |
+| [`FrontEnd/`](FrontEnd/) | App web (React + Vite) |
+| [`Backend/`](Backend/) | Vacía por ahora |
 
----
-
-## 1. Parts
-
-- 1 × ESP32 DevKit (30 or 38 pin, ESP32-WROOM)
-- 3 × RC522 RFID reader module
-- 2+ RFID tags/cards (13.56 MHz MIFARE) — the two you already have are pre-registered
-- 3 × LED (green, a second colour, red) + 3 × 220–330 Ω resistor
-- 1–2 breadboards and jumper wires (male–male and male–female)
-- Recommended: 1 × 10–100 µF capacitor across the 3.3 V rail
-
----
-
-## 2. Wiring
-
-### 2.1 Pin map
-
-**The pins you were already using are unchanged.** Only GPIO 25 and 26 are new.
-
-| Signal | ESP32 pin | Goes to |
-|---|---|---|
-| 3.3 V | 3V3 | `3.3V` of all 3 readers |
-| GND | GND | `GND` of all 3 readers + LED cathodes |
-| SCK | GPIO 18 | `SCK` of all 3 readers |
-| MISO | GPIO 19 | `MISO` of all 3 readers |
-| MOSI | GPIO 23 | `MOSI` of all 3 readers |
-| SS reader 1 | GPIO 5 *(existing)* | `SDA` of reader 1 only |
-| SS reader 2 | **GPIO 25** *(new)* | `SDA` of reader 2 only |
-| SS reader 3 | **GPIO 26** *(new)* | `SDA` of reader 3 only |
-| Green LED | GPIO 22 *(existing)* | resistor → LED anode |
-| Second LED | GPIO 17 *(existing)* | resistor → LED anode |
-| Red LED | GPIO 4 *(existing)* | resistor → LED anode |
-
-RC522 pins left unconnected: `IRQ` and `RST`. (If a reader is not detected, tie its `RST` to 3.3 V.)
-
-> **Never power the RC522 from 5 V / VIN.** It is a 3.3 V device and 5 V will damage it.
-
-### 2.2 Diagram
+## Cómo se conectan
 
 ```
-                       ESP32
-                  ┌─────────────┐
-   3.3V rail ◄────┤ 3V3         │
-   GND rail  ◄────┤ GND         │
-                  │             │
-   SCK  bus  ◄────┤ GPIO 18     │
-   MISO bus  ◄────┤ GPIO 19     │
-   MOSI bus  ◄────┤ GPIO 23     │
-                  │             │
-   Reader 1 SDA ◄─┤ GPIO 5      │
-   Reader 2 SDA ◄─┤ GPIO 25     │
-   Reader 3 SDA ◄─┤ GPIO 26     │
-                  │             │
-   Green LED   ◄──┤ GPIO 22     │──[220Ω]──►|── GND
-   Second LED  ◄──┤ GPIO 17     │──[220Ω]──►|── GND
-   Red LED     ◄──┤ GPIO 4      │──[220Ω]──►|── GND
-                  └─────────────┘
-
-   Each RC522:   SDA  SCK  MOSI  MISO  IRQ  GND  RST  3.3V
-                  │    │    │     │     x    │    x    │
-              own pin  └── shared bus ──┘   GND       3.3V
+ Tags RFID ──► ESP32 ──── eventos (UID + lector) ────►  Supabase  ◄──── lee / escucha ──── FrontEnd
+                 ▲                                        │
+                 └──── mapeo tag→lector, LEDs a encender ─┘
 ```
 
-### 2.3 Building it on the breadboard, step by step
+- El **ESP32** solo reporta hechos: qué UID apareció o desapareció en qué lector.
+- **Supabase** sabe qué recurso es cada UID y dónde debe ir, y decide si está en su sitio.
+- El **FrontEnd** lee el estado y el historial desde Supabase. Detalles en [`Supabase/README.md`](Supabase/README.md).
 
-1. **Seat the ESP32** across the centre gap of the breadboard. Many ESP32 boards are so
-   wide that they cover all the holes on one side — if so, join two breadboards side by
-   side and straddle the board across both, or use male–female jumpers straight from the
-   ESP32 pins.
-2. **Power rails.** Jumper ESP32 `3V3` to the red (+) rail and `GND` to the blue (–) rail.
-   On long breadboards the rails are often split in the middle: bridge both halves.
-   Put the capacitor across + and – (long leg to +).
-3. **Create the shared SPI bus.** Pick three free rows on the breadboard and name them
-   SCK, MISO and MOSI. Run one jumper from GPIO 18, 19 and 23 to those rows.
-4. **Connect each reader** (repeat 3 times) with male–female jumpers:
-   - `3.3V` → + rail
-   - `GND` → – rail
-   - `SCK` → SCK row, `MISO` → MISO row, `MOSI` → MOSI row
-   - `SDA` → that reader's own pin (5, 25 or 26)
-5. **LEDs.** Long leg (anode) through a resistor to the GPIO, short leg (cathode) to the – rail.
-6. **Place the readers at least 10 cm apart** and not stacked. If their antennas are close
-   together, one tag can be seen by two readers at once.
-7. Keep SPI wires short (under ~20 cm). Long wires are the most common cause of
-   readers that work alone but fail together.
+## Puesta en marcha
 
-**Tip:** test with one reader first (the original one on GPIO 5), then add the second,
-then the third. If adding a reader breaks the others, the problem is in that reader's
-wiring.
-
----
-
-## 3. Supabase setup
-
-1. Go to <https://supabase.com>, create a free account and click **New project**.
-   Choose a name, a database password and a region, then wait until it is ready.
-2. Open **SQL Editor → New query**, paste the whole content of `supabase.sql`, and
-   press **Run**. This creates the `historial_inventario` table and the security rules
-   that let the device insert and read rows (but not edit or delete them).
-3. Open **Project Settings → API** (also shown under **Connect**) and copy:
-   - **Project URL** — looks like `https://abcdefgh.supabase.co`
-   - **anon / publishable key** — the public one.
-     **Do not use the `service_role` / secret key** in the sketch.
-4. To check the data later: **Table Editor → historial_inventario**.
-
-Table columns:
-
-| Column | Meaning |
-|---|---|
-| `objeto` | Object name |
-| `uid` | Tag UID |
-| `evento` | `RETIRADO` (taken) or `DEVUELTO` (returned) |
-| `lector` | Reader number (1–3) where it was / is |
-| `creado_en` | Timestamp, filled in by Supabase |
-
----
-
-## 4. Arduino IDE setup
-
-What the sketch needs:
-
-| Component | Name in the IDE | Status on this PC |
-|---|---|---|
-| Board package | **esp32** by Espressif Systems | **must be installed** (step 1 below) |
-| Library | **RFID_MFRC522v2** by GithubCommunity | installed, 2.0.6 |
-| Library | **ESP Async WebServer** by ESP32Async | installed, 3.12.1 |
-| Library | **Async TCP** by ESP32Async | installed, 3.5.0 |
-
-1. **Tools → Board → Boards Manager**, search `esp32`, install **esp32 by Espressif Systems**.
-   It is a large download (several hundred MB), so it can take a while on a slow connection.
-2. On another computer, also open **Sketch → Include Library → Manage Libraries** and
-   install the three libraries above by their exact names.
-
-`WiFi`, `HTTPClient`, `WiFiClientSecure` and `ESPmDNS` come with the ESP32 board package.
-
-If Windows does not show a COM port when you plug in the ESP32, install the USB driver
-for your board's chip (CP210x from Silicon Labs, or CH340).
-
----
-
-## 5. Configure and upload
-
-1. Open `InventarioRFID.ino` in the Arduino IDE.
-2. Edit the block at the top:
-
-   ```cpp
-   const char* WIFI_SSID = "TU_WIFI";
-   const char* WIFI_PASS = "TU_CLAVE";
-
-   const char* SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
-   const char* SUPABASE_KEY = "TU_ANON_KEY";
-   ```
-
-   The WiFi must be **2.4 GHz** (the ESP32 does not support 5 GHz).
-3. **Tools → Board → esp32 → ESP32 Dev Module**, and **Tools → Port →** your COM port.
-4. Press **Upload**. If it stays on `Connecting....`, hold the **BOOT** button on the
-   ESP32 until the upload starts.
-5. Open **Tools → Serial Monitor** at **115200** baud. You will see:
-
-   ```
-   Pagina web: http://192.168.1.50
-   Tambien:    http://inventario.local
-   ```
-
-6. Open that address in a browser on a phone or PC **on the same WiFi**.
-
----
-
-## 6. How it behaves
-
-| Situation | Green (22) | Second (17) | Red (4) | Web page | Supabase |
-|---|---|---|---|---|---|
-| Object 1 on any reader | ON | – | – | "Disponible" | `DEVUELTO` when it arrives |
-| Object 2 on any reader | – | ON | – | "Disponible" | `DEVUELTO` when it arrives |
-| An object is taken | its LED OFF | | ON | "Prestado" | `RETIRADO` |
-| All objects in place | | | OFF | | |
-| Unknown tag | | | | "Tag desconocido" + UID | nothing saved |
-
-- An object can be returned to **any** of the three readers.
-- Moving an object from one reader to another quickly (under 0.7 s) is not counted as a loan.
-- During the first 2.5 s after power-on the ESP32 only takes stock; it does not log events.
-  Objects that are missing at power-on show as "Prestado" without a new row.
-- If WiFi drops, up to 20 events wait in a queue and are retried; the LEDs keep working.
-
----
-
-## 7. Adding more objects
-
-1. Put the new tag on any reader. The web page (and the Serial Monitor) shows
-   **Tag desconocido** with its UID, e.g. `A1B2C3D4`.
-2. Add a line to the `objetos[]` list in the sketch (use `-1` if it has no LED):
-
-   ```cpp
-   { "Taladro", { 0xA1, 0xB2, 0xC3, 0xD4 }, -1, false, -1, false, 0 },
-   ```
-
-3. Upload again. You can also rename `"Objeto 1"` / `"Objeto 2"` here.
-
----
-
-## 8. Troubleshooting
-
-| Problem | Check |
-|---|---|
-| No reader detects anything | 3.3 V and GND on the readers; SCK/MISO/MOSI on 18/19/23 |
-| One reader works alone, not with the others | Its `SDA` wire is on the wrong pin, or shares a row with another reader's `SDA` |
-| Readers are erratic / random resets | Shorter wires, add the capacitor on 3.3 V, power the ESP32 from a good USB port |
-| A tag shows on two readers | Move the readers further apart |
-| "Sin WiFi" in the Serial Monitor | SSID/password, and that the network is 2.4 GHz |
-| `inventario.local` does not open | Use the IP address printed in the Serial Monitor |
-| `[SUPABASE] Error 401` | Wrong or incomplete key |
-| `[SUPABASE] Error 404` | `supabase.sql` was not run, or the table name differs |
-| `[SUPABASE] Error 403` / code 42501 | The security policies from `supabase.sql` are missing |
-| Page says "No se pudo leer Supabase" | The phone/PC needs internet; check URL and key |
-
----
-
-## 9. Security notes
-
-- Anyone on your WiFi can open the page and read the Supabase public key from it. With the
-  rules in `supabase.sql` that key can only add and read history rows.
-- The sketch does not verify Supabase's TLS certificate (`setInsecure()`), which is normal
-  for a prototype but not for a production deployment.
+1. Crear el proyecto en Supabase y ejecutar [`Supabase/schema.sql`](Supabase/schema.sql).
+2. Cablear y cargar el ESP32 siguiendo [`ESP32/README.md`](ESP32/README.md).
+3. Asignar los tags a los recursos en Supabase (Table Editor → `recursos`).
