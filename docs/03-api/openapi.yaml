@@ -1,0 +1,706 @@
+openapi: 3.1.0
+info:
+  title: Thesora API
+  version: 1.0.0
+  description: Contrato HTTP para la aplicación React y los dispositivos ESP32.
+servers:
+  - url: https://thesora.redskycol.com/api
+security:
+  - bearerAuth: []
+tags:
+  - name: Autenticación
+  - name: Inventario
+  - name: Préstamos
+  - name: Análisis
+  - name: Administración
+  - name: Dispositivos
+
+paths:
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Identificar usuario por credencial QR o ID institucional
+      description: El identificador debe verificarse con el mecanismo institucional antes de emitir tokens; el ID por sí solo no es prueba de identidad.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metodo, credencial]
+              properties:
+                metodo: {type: string, enum: [qr, id]}
+                credencial: {type: string}
+                comprobante: {type: string, description: Prueba emitida por el mecanismo institucional de identificación.}
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sesion'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+  /auth/refresh:
+    post:
+      tags: [Autenticación]
+      summary: Renovar token de acceso
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: {type: string}
+      responses:
+        '200':
+          description: Tokens renovados
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Tokens'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      summary: Consultar la cuenta actual
+      responses:
+        '200':
+          description: Cuenta
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Usuario'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+
+  /categorias:
+    get:
+      tags: [Inventario]
+      summary: Listar categorías
+      responses:
+        '200':
+          description: Categorías
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Categoria'}
+    post:
+      tags: [Administración]
+      summary: Crear categoría (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Nombre'}
+      responses:
+        '201': {description: Categoría creada}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /activos:
+    get:
+      tags: [Inventario]
+      summary: Buscar activos
+      parameters:
+        - {name: q, in: query, schema: {type: string}, description: Nombre o código}
+        - {name: categoria_id, in: query, schema: {type: integer}}
+        - {name: estado, in: query, schema: {type: string, enum: [disponible, prestado, en_revision]}}
+      responses:
+        '200':
+          description: Activos encontrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Activo'}
+    post:
+      tags: [Administración]
+      summary: Crear activo (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivoEdicion'}
+      responses:
+        '201':
+          description: Activo creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Activo'}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /activos/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/Id'}
+    get:
+      tags: [Inventario]
+      summary: Consultar ficha, disponibilidad y ubicación del activo
+      responses:
+        '200':
+          description: Activo
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Activo'}
+        '404': {$ref: '#/components/responses/NoEncontrado'}
+    patch:
+      tags: [Administración]
+      summary: Editar activo (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivoEdicion'}
+      responses:
+        '200':
+          description: Activo actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Activo'}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /activos/{id}/ubicacion:
+    get:
+      tags: [Inventario]
+      summary: Obtener el estante y la posición señalada para el mapa
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '200':
+          description: Posición asignada y posiciones vecinas del mismo estante
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UbicacionMapa'}
+        '404': {$ref: '#/components/responses/NoEncontrado'}
+  /activos/{id}/senal:
+    post:
+      tags: [Inventario]
+      summary: Solicitar iluminación temporal del LED de la posición asignada
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '202': {description: Señal programada para el siguiente sondeo del ESP32}
+        '409': {$ref: '#/components/responses/Conflicto'}
+  /activos/{id}/historial:
+    get:
+      tags: [Inventario]
+      summary: Consultar movimientos RFID e historial del activo
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '200':
+          description: Historial
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Movimiento'}
+
+  /prestamos:
+    get:
+      tags: [Préstamos]
+      summary: Listar préstamos propios o todos según permisos
+      parameters:
+        - {name: alcance, in: query, schema: {type: string, enum: [mios, todos], default: mios}}
+        - {name: estado, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: Préstamos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Prestamo'}
+    post:
+      tags: [Préstamos]
+      summary: Preparar retiro; el RFID confirma la salida física
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activo_id, responsable_id, devolucion_esperada_at]
+              properties:
+                activo_id: {type: integer}
+                responsable_id: {type: integer, description: Debe ser el usuario actual salvo rol Encargado o Administrador.}
+                devolucion_esperada_at: {type: string, format: date-time}
+      responses:
+        '201':
+          description: Préstamo pendiente de detección física
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Prestamo'}
+        '409': {$ref: '#/components/responses/Conflicto'}
+  /prestamos/{id}:
+    get:
+      tags: [Préstamos]
+      summary: Ver detalle del préstamo
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '200':
+          description: Préstamo
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Prestamo'}
+        '404': {$ref: '#/components/responses/NoEncontrado'}
+  /prestamos/{id}/devolucion:
+    post:
+      tags: [Préstamos]
+      summary: Iniciar verificación RFID para devolución
+      description: No cierra el préstamo. La detección del UID correcto y de la posición asignada determina su cierre.
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '202':
+          description: En espera de identidad y posición RFID
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Prestamo'}
+        '409': {$ref: '#/components/responses/Conflicto'}
+  /prestamos/{id}/cancelar-operacion:
+    post:
+      tags: [Préstamos]
+      summary: Cancelar espera de retiro o de devolución
+      description: Si el préstamo ya estaba activo, vuelve al estado activo; no se cancela el préstamo en curso.
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      responses:
+        '200':
+          description: Operación cancelada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Prestamo'}
+        '409': {$ref: '#/components/responses/Conflicto'}
+
+  /analisis/resumen:
+    get:
+      tags: [Análisis]
+      summary: Resumen de uso por período, disponibilidad y recursos subutilizados
+      responses:
+        '200':
+          description: Indicadores
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResumenAnalisis'}
+  /analisis/reutilizables:
+    get:
+      tags: [Análisis]
+      summary: Activos que conviene revisar antes de adquirir otros
+      responses:
+        '200':
+          description: Activos de baja utilización
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Activo'}
+  /analisis/recomendacion:
+    post:
+      tags: [Análisis]
+      summary: Obtener recomendación contextual de reutilización y mantenimiento
+      description: No debe presentar conclusiones predictivas si no existe historial suficiente.
+      responses:
+        '200':
+          description: Recomendación
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Recomendacion'}
+
+  /usuarios:
+    get:
+      tags: [Administración]
+      summary: Buscar personas para préstamo delegado (Encargado o Administrador)
+      parameters:
+        - {name: q, in: query, schema: {type: string}}
+      responses:
+        '200':
+          description: Usuarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Usuario'}
+        '403': {$ref: '#/components/responses/Prohibido'}
+    post:
+      tags: [Administración]
+      summary: Crear usuario (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, rol]
+              properties:
+                nombre: {type: string}
+                correo: {type: string, format: email}
+                rol: {$ref: '#/components/schemas/Rol'}
+                credencial: {type: string}
+      responses:
+        '201': {description: Usuario creado}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /usuarios/{id}:
+    patch:
+      tags: [Administración]
+      summary: Actualizar cuenta o rol (Administrador)
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nombre: {type: string}
+                rol: {$ref: '#/components/schemas/Rol'}
+                activo: {type: boolean}
+      responses:
+        '200': {description: Usuario actualizado}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /posiciones:
+    get:
+      tags: [Inventario]
+      summary: Listar posiciones físicas
+      responses:
+        '200':
+          description: Posiciones
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Ubicacion'}
+    post:
+      tags: [Administración]
+      summary: Crear posición dentro de un gabinete (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [gabinete_id, estante, codigo]
+              properties:
+                gabinete_id: {type: integer}
+                estante: {type: string}
+                codigo: {type: string}
+      responses:
+        '201': {description: Posición creada}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /lectores:
+    post:
+      tags: [Administración]
+      summary: Registrar lector de un ESP32 en una posición (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dispositivo_id, canal, posicion_id]
+              properties:
+                dispositivo_id: {type: string}
+                canal: {type: integer, minimum: 1}
+                posicion_id: {type: integer}
+      responses:
+        '201': {description: Lector registrado}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /lectores/{id}:
+    patch:
+      tags: [Administración]
+      summary: Cambiar posición de un lector (Administrador)
+      parameters:
+        - {$ref: '#/components/parameters/Id'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [posicion_id]
+              properties:
+                posicion_id: {type: integer}
+      responses:
+        '200': {description: Posición actualizada; el ESP32 obtendrá el nuevo mapeo}
+        '403': {$ref: '#/components/responses/Prohibido'}
+
+  /dispositivos/{dispositivo_id}/configuracion:
+    get:
+      tags: [Dispositivos]
+      summary: Obtener mapeo vigente de RFID a lectores físicos
+      description: Autoridad en backend; el ESP32 conserva copia en flash para uso sin conexión.
+      security: [{deviceKey: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DispositivoId'}
+      responses:
+        '200':
+          description: Mapeo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Mapeo'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+  /dispositivos/{dispositivo_id}/senales:
+    get:
+      tags: [Dispositivos]
+      summary: Consultar qué LED debe encenderse
+      description: El parpadeo por RFID incorrecto se decide localmente en el ESP32.
+      security: [{deviceKey: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DispositivoId'}
+      responses:
+        '200':
+          description: Canales a iluminar
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [canales]
+                properties:
+                  canales:
+                    type: array
+                    items: {type: integer, minimum: 1}
+  /dispositivos/{dispositivo_id}/eventos:
+    post:
+      tags: [Dispositivos]
+      summary: Ingresar lote de lecturas RFID
+      description: 'Transacción atómica; deduplicación por (dispositivo_id, arranque, secuencia). PRESENTE del arranque es inventario inicial, no una devolución. El backend valida préstamos y posiciones.'
+      security: [{deviceKey: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DispositivoId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [arranque, eventos]
+              properties:
+                arranque: {type: integer, minimum: 0}
+                eventos:
+                  type: array
+                  minItems: 1
+                  maxItems: 8
+                  items: {$ref: '#/components/schemas/EventoDispositivo'}
+      responses:
+        '202':
+          description: Lote confirmado; los duplicados no generan movimientos nuevos
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [aceptados, duplicados]
+                properties:
+                  aceptados: {type: integer}
+                  duplicados: {type: integer}
+        '422': {$ref: '#/components/responses/Validacion'}
+  /dispositivos/{dispositivo_id}/heartbeat:
+    post:
+      tags: [Dispositivos]
+      summary: Registrar latido y versión del ESP32
+      security: [{deviceKey: []}]
+      parameters:
+        - {$ref: '#/components/parameters/DispositivoId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [arranque, firmware]
+              properties:
+                arranque: {type: integer}
+                firmware: {type: string}
+                rssi: {type: integer}
+      responses:
+        '204': {description: Estado actualizado}
+
+  /ws/estado:
+    get:
+      tags: [Préstamos]
+      summary: Cambios de inventario y de préstamo en vivo (WebSocket)
+      description: 'Handshake WebSocket. Evento JSON: {tipo, activo_id, prestamo_id, estado, detalle}. El cliente usa su sesión autenticada; no se incluyen tokens en la URL.'
+      responses:
+        '101': {description: Switching Protocols}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+      x-websocket: true
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    deviceKey:
+      type: apiKey
+      in: header
+      name: X-Device-Key
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    DispositivoId:
+      name: dispositivo_id
+      in: path
+      required: true
+      schema: {type: string}
+  responses:
+    NoEncontrado:
+      description: Registro no encontrado
+    NoAutorizado:
+      description: Sesión o credencial inválida
+    Prohibido:
+      description: Rol sin permisos
+    Conflicto:
+      description: Estado incompatible con la operación
+    Validacion:
+      description: Lote o datos inválidos; no se procesan eventos del lote
+  schemas:
+    Rol:
+      type: string
+      enum: [usuario, encargado, administrador]
+    Nombre:
+      type: object
+      required: [nombre]
+      properties:
+        nombre: {type: string, minLength: 1}
+    Categoria:
+      type: object
+      required: [id, nombre]
+      properties:
+        id: {type: integer}
+        nombre: {type: string}
+    Usuario:
+      type: object
+      required: [id, nombre, rol, activo]
+      properties:
+        id: {type: integer}
+        nombre: {type: string}
+        rol: {$ref: '#/components/schemas/Rol'}
+        activo: {type: boolean}
+    Tokens:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token: {type: string}
+        refresh_token: {type: string}
+        token_type: {type: string, const: bearer}
+        expires_in: {type: integer, description: Segundos de vigencia del acceso}
+    Sesion:
+      type: object
+      required: [tokens, usuario]
+      properties:
+        tokens: {$ref: '#/components/schemas/Tokens'}
+        usuario: {$ref: '#/components/schemas/Usuario'}
+    Ubicacion:
+      type: object
+      required: [posicion_id, espacio, gabinete, estante, codigo]
+      properties:
+        posicion_id: {type: integer}
+        espacio: {type: string}
+        gabinete: {type: string}
+        estante: {type: string}
+        codigo: {type: string}
+    UbicacionMapa:
+      type: object
+      required: [asignada, posiciones_estante]
+      properties:
+        asignada: {$ref: '#/components/schemas/Ubicacion'}
+        posiciones_estante:
+          type: array
+          items: {$ref: '#/components/schemas/Ubicacion'}
+    Activo:
+      type: object
+      required: [id, nombre, codigo, categoria, estado, ubicacion]
+      properties:
+        id: {type: integer}
+        nombre: {type: string}
+        codigo: {type: string, description: 'Código público calculado del ID, por ejemplo ACT-004'}
+        categoria: {type: string}
+        estado: {type: string, enum: [disponible, prestado, en_revision]}
+        condicion: {type: string, description: Descripción de la condición física}
+        ultima_revision_at: {type: [string, 'null'], format: date-time}
+        ubicacion: {$ref: '#/components/schemas/Ubicacion'}
+    ActivoEdicion:
+      type: object
+      required: [nombre, categoria_id, posicion_asignada_id, rfid_uid]
+      properties:
+        nombre: {type: string}
+        categoria_id: {type: integer}
+        posicion_asignada_id: {type: integer}
+        rfid_uid: {type: string, pattern: '^[0-9A-Fa-f]{8,20}$'}
+        estado: {type: string, enum: [disponible, prestado, en_revision]}
+        condicion: {type: string}
+        ultima_revision_at: {type: [string, 'null'], format: date-time}
+    Prestamo:
+      type: object
+      required: [id, activo_id, responsable_id, entregado_por_id, devolucion_esperada_at, estado]
+      properties:
+        id: {type: integer}
+        activo_id: {type: integer}
+        responsable_id: {type: integer}
+        entregado_por_id: {type: integer}
+        activo_nombre: {type: string}
+        responsable_nombre: {type: string}
+        entregado_por_nombre: {type: string}
+        ubicacion_asignada: {$ref: '#/components/schemas/Ubicacion'}
+        retiro_at: {type: [string, 'null'], format: date-time}
+        devolucion_esperada_at: {type: string, format: date-time}
+        devolucion_at: {type: [string, 'null'], format: date-time}
+        estado:
+          type: string
+          enum: [pendiente_retiro, activo, validando_devolucion, esperando_posicion, devuelto, cancelado]
+    Movimiento:
+      type: object
+      required: [id, tipo, ocurrido_at]
+      properties:
+        id: {type: integer}
+        tipo: {type: string}
+        ocurrido_at: {type: string, format: date-time}
+        prestamo_id: {type: [integer, 'null']}
+        ubicacion: {$ref: '#/components/schemas/Ubicacion'}
+    ResumenAnalisis:
+      type: object
+      required: [disponibles, prestados, en_revision, uso_semanal, baja_utilizacion]
+      properties:
+        disponibles: {type: integer}
+        prestados: {type: integer}
+        en_revision: {type: integer}
+        uso_semanal:
+          type: array
+          items:
+            type: object
+            required: [semana, movimientos]
+            properties:
+              semana: {type: string}
+              movimientos: {type: integer}
+        baja_utilizacion:
+          type: array
+          items: {type: integer, description: ID de activo}
+    Recomendacion:
+      type: object
+      required: [texto, activos_relacionados]
+      properties:
+        texto: {type: string}
+        activos_relacionados:
+          type: array
+          items: {type: integer}
+        datos_insuficientes: {type: boolean}
+    Mapeo:
+      type: object
+      required: [uid, activo_id, codigo, canal]
+      properties:
+        uid: {type: string, description: UID hexadecimal de la etiqueta}
+        activo_id: {type: integer}
+        codigo: {type: string}
+        canal: {type: integer, minimum: 1}
+    EventoDispositivo:
+      type: object
+      required: [secuencia, tipo, antiguedad_ms]
+      properties:
+        secuencia: {type: integer, minimum: 1}
+        tipo: {type: string, enum: [INICIO, PRESENTE, DEVUELTO, RETIRADO]}
+        canal: {type: [integer, 'null'], minimum: 1, description: Nulo solo en INICIO}
+        uid: {type: [string, 'null'], description: Nulo solo en INICIO}
+        antiguedad_ms: {type: integer, minimum: 0, description: Tiempo transcurrido desde la observación en el ESP32}
