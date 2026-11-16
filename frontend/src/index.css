@@ -1,4 +1,4 @@
-/* Thesora · fundamentos del manual de marca */
+﻿/* Thesora · fundamentos del manual de marca */
 :root {
   --navy: #002661;
   --navy-hover: #001b46;
@@ -940,7 +940,7 @@ h3 {
 
 /* ---------- Móvil ---------- */
 
-@media (max-width: 767px) {
+@media (max-width: 959px) {
   .container {
     padding: 0 16px;
   }
@@ -1099,3 +1099,59 @@ h3 {
     bottom: 76px;
   }
 }
+
+/* Integrated application states and administration, using the approved brand scale. */
+.brand-logo { display: block; width: 151px; height: 48px; object-fit: contain; }
+.topnav .icon { display: none; }
+.skip-link { position: absolute; left: 16px; top: -80px; z-index: 30; padding: 12px; background: white; color: var(--navy); }
+.skip-link:focus { top: 8px; }
+#contenido:focus { outline: none; }
+button:disabled { opacity: .6; cursor: wait; }
+button.enlace { border: 0; padding: 0; background: none; color: inherit; cursor: pointer; }
+.field { border-color: var(--borde-control); }
+.field:invalid:not(:placeholder-shown) { box-shadow: none; }
+.form-field { display: grid; gap: 6px; min-width: 0; }
+.form-field .label { margin: 0; }
+.form-field .field { margin: 0; }
+.form-field .note { font-weight: 400; }
+.sessionbar { border-bottom: 1px solid var(--borde); background: white; font-size: 12px; line-height: 18px; }
+.sessionbar__inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
+.connection-notice { padding: 8px 16px; text-align: center; background: var(--revision-fondo); color: var(--revision); font-size: 12px; line-height: 18px; }
+.connection-notice button { margin-left: 12px; text-decoration: underline; }
+.search-line { display: flex; gap: 8px; align-items: end; }
+.search-line > .field, .search-line > .form-field { flex: 1; }
+.inventory-search { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr) auto; gap: 16px; align-items: end; }
+.visor video { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.visor:empty { color: white; }
+.chart-scroll { overflow-x: auto; }
+.chart-scroll .barras { gap: 16px; align-items: end; padding-bottom: 8px; }
+.chart-scroll .barras li { width: 64px; min-width: 64px; flex: none; font-size: 10px; }
+.chart-scroll .barras .note { font-size: 10px; line-height: 14px; overflow-wrap: anywhere; }
+.reco__detalle > p { white-space: pre-line; }
+.notice-warning { margin-top: 12px; padding: 12px; background: var(--revision-fondo); color: var(--revision); border-radius: var(--r-control); }
+.admin-nav { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 24px; border-bottom: 1px solid var(--borde); }
+.admin-nav a { padding: 10px 0; border-bottom: 2px solid transparent; font-size: 14px; }
+.admin-nav a[aria-current] { border-color: var(--navy); font-weight: 700; }
+.admin-toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.admin-editor { max-width: 660px; margin-bottom: 24px; }
+.admin-editor h2 { margin-bottom: 16px; }
+.admin-search { max-width: 660px; margin: 16px 0; }
+.check-field { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.check-field input { width: 18px; height: 18px; accent-color: var(--navy); }
+.table-scroll { overflow-x: auto; margin-top: 16px; border: 1px solid var(--borde); border-radius: var(--r-control); background: white; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 21px; text-align: left; }
+.admin-table caption { text-align: left; font-size: 12px; color: var(--texto-2); padding: 12px 16px; }
+.admin-table th { background: var(--azul-palido); }
+.admin-table th, .admin-table td { padding: 12px 16px; vertical-align: top; border-bottom: 1px solid var(--borde); min-width: 100px; overflow-wrap: anywhere; }
+.admin-table tr:last-child td { border-bottom: 0; }
+.admin-table .btn { white-space: nowrap; }
+.key-result { margin-bottom: 24px; max-width: 660px; }
+.key-result textarea { font-family: monospace; min-height: 80px; overflow-wrap: anywhere; }
+@media (max-width: 959px) {
+  .inventory-search { grid-template-columns: minmax(0,1fr); }
+  .bottomnav { height: calc(64px + env(safe-area-inset-bottom)); }
+  .shell--nav { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .admin-toolbar { align-items: start; flex-wrap: wrap; }
+}
+
+
