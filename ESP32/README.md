@@ -1,23 +1,17 @@
 # ESP32 · Stand RFID
 
-[`InventarioRFID/InventarioRFID.ino`](InventarioRFID/InventarioRFID.ino) lee 3 lectores RC522 y envía a Supabase cada tag que aparece o desaparece. Cada lector tiene **un objeto correcto**, definido en Supabase.
+[`InventarioRFID/InventarioRFID.ino`](InventarioRFID/InventarioRFID.ino) lee tres RC522 y comunica sus eventos a la API Thesora en `https://thesora.redskycol.com/api`. El backend administra el mapeo de UID a posiciones y confirma los préstamos y devoluciones.
 
 ## Qué hace
 
-- **Envía eventos** con el UID y el número de lector: `DEVUELTO` cuando un tag aparece y `RETIRADO` cuando lleva 0,8 s sin leerse.
-- **Inventario al encender**: durante los primeros 3 s envía `PRESENTE` por cada tag que encuentra, y Supabase corrige lo que cambió mientras estuvo apagado.
-- **Mapeo desde Supabase**: qué objeto va en qué lector no está en el código. Lo descarga al conectar y cada 10 s, y lo guarda en la flash para funcionar sin WiFi. Al cambiarlo en Supabase, el stand lo aplica solo y muestra el nuevo reparto en el Serial Monitor:
+- Mantiene la lectura de hasta cuatro tags por lector, la detección de retiros a los 800 ms y el inventario inicial de tres segundos.
+- Descarga el mapeo al conectar y cada diez segundos; conserva la última configuración válida en Preferences. Una posición admite varios activos.
+- Consulta las señales LED cada dos segundos y comunica heartbeat cada treinta segundos.
+- Mantiene hasta 64 eventos en RAM, en lotes de ocho, mientras no hay conectividad. Reintenta el mismo lote hasta recibir un ACK completo; no considera 409, 422 o una respuesta JSON incompleta como confirmación.
+- La red corre en una tarea separada: TLS, SNTP y solicitudes lentas no bloquean el bucle de lectura.
+- La cola RAM no sobrevive al reinicio; si se llena, informa por Serial que se perdió un evento.
 
-  ```
-  [CONFIG] Mapeo de stand-01:
-    CAJON 1: ACT-004 (tag AF91D01C)
-    CAJON 2: ACT-007 (tag 15F9DD00)
-    CAJON 3: ACT-001 (tag 06F123CE)
-  ```
-- **Sin WiFi** guarda hasta 64 eventos y los envía al volver, con su hora real. Los reintentos no duplican filas.
-- **Latido** cada 30 s para que la app sepa si el stand está en línea.
-- **Varios tags por lector** (hasta 4).
-- La red corre en una tarea aparte: una conexión lenta no frena la lectura.
+No hay UID físicos fijados en el sketch. Los UID se registran desde etiquetas realmente leídas; los datos del servidor por sí solos no prueban una correspondencia con los tags físicos.
 
 ## LEDs (uno por lector)
 
@@ -58,50 +52,76 @@
 - Cables SPI cortos (menos de 20 cm).
 - Probar primero un lector solo y añadir los otros de uno en uno. Si al añadir uno fallan los demás, el problema está en el cableado de ese.
 
-Para añadir un cuarto lector, copiar las tres líneas de `LECTOR 3` con otro pin libre (por ejemplo GPIO 27) y añadirlo a `LECTORES[]` y `PIN_LED[]`. En Supabase no hay que cambiar nada salvo asignarle un objeto.
+Para añadir un cuarto lector, copiar las tres líneas de `LECTOR 3` con otro pin libre (por ejemplo GPIO 27) y añadirlo a `LECTORES[]` y `PIN_LED[]`. En Administración registra el canal del nuevo lector y su posición. La posición puede contener varios activos.
 
-## Arduino IDE
+## Dependencias y compilación
 
-| Componente | Nombre en el IDE |
-|---|---|
-| Placa | **esp32** de Espressif Systems (probado con 3.3.12) |
-| Librería | **RFID_MFRC522v2** (probado con 2.0.6) |
+Verificado con **Arduino CLI 1.2.0**, placa **ESP32 Dev Module** (`esp32:esp32:esp32`), core **Espressif 3.2.0**, **RFID_MFRC522v2 2.0.6** y **ArduinoJson 7.4.3**. WiFi, HTTPClient, WiFiClientSecure, Preferences y SPI vienen con el core.
 
-`WiFi`, `HTTPClient`, `WiFiClientSecure` y `Preferences` vienen con la placa ESP32.
+El archivo histórico `old-InventarioRFID.ino` se conserva sin cambios. Arduino concatena todos los `.ino` de una carpeta: prepara un directorio de compilación que contenga únicamente el sketch actual, para evitar definiciones duplicadas. Por ejemplo, desde la raíz:
 
-## Configurar y cargar
+```powershell
+New-Item -ItemType Directory -Force .local-dev/arduino/sketch/InventarioRFID
+Copy-Item ESP32/InventarioRFID/InventarioRFID.ino .local-dev/arduino/sketch/InventarioRFID/InventarioRFID.ino
+arduino-cli compile --fqbn esp32:esp32:esp32 --build-path .local-dev/arduino/build .local-dev/arduino/sketch/InventarioRFID
+```
 
-1. Ejecutar antes [`../Supabase/schema.sql`](../Supabase/schema.sql).
-2. Abrir `InventarioRFID/InventarioRFID.ino` y editar el bloque inicial:
+Instala las dos bibliotecas mediante Library Manager o añade `--libraries <directorio>` si las mantienes fuera del sketchbook. Los artefactos temporales de compilación no se versionan.
+
+## Registrar y configurar el stand
+
+1. Un administrador registra el dispositivo `stand-01` en Thesora y conserva su clave, entregada solo al crearlo.
+2. Registra sus lectores con canales **1, 2 y 3**, cada uno asociado a su posición física. Asigna los activos y sus UID RFID a esas posiciones.
+3. En una copia local del sketch configura:
 
    ```cpp
-   const char* WIFI_SSID = "TU_WIFI";          // solo 2.4 GHz
+   const char* WIFI_SSID = "TU_WIFI"; // red de 2.4 GHz
    const char* WIFI_PASS = "TU_CLAVE";
-   const char* SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
-   const char* SUPABASE_KEY = "TU_ANON_KEY";
+   const char* API_URL = "https://thesora.redskycol.com/api";
+   const char* DEVICE_API_KEY = "TU_CLAVE_DEL_DISPOSITIVO";
    const char* DISPOSITIVO_ID = "stand-01";
    ```
 
-3. **Tools → Board → esp32 → ESP32 Dev Module** y elegir el puerto COM.
-4. **Upload**. Si se queda en `Connecting....`, mantener pulsado **BOOT**.
-5. **Serial Monitor** a **115200** baudios.
+4. Selecciona **ESP32 Dev Module** y el puerto de la placa. Compila y carga únicamente el sketch actual preparado en el directorio de compilación. Si queda en `Connecting...`, mantén BOOT.
+5. Abre Serial Monitor a **115200** baudios. Comprueba WiFi, sincronización de hora, descarga de configuración y lotes confirmados.
 
-No subir a GitHub el sketch con la clave del WiFi.
+No versiones contraseñas WiFi ni claves reales. Los placeholders del archivo versionado deben conservarse; una copia local configurada queda fuera del repositorio. La clave de dispositivo guardada en el único `.env` raíz como `THESORA_DEVICE_API_KEY` se transfiere solo a esa copia local, nunca al archivo versionado.
 
-## Problemas frecuentes
+## Contrato del dispositivo
 
-| Problema | Revisar |
+Todas las peticiones incluyen `X-Device-Key`, con una clave propia del ESP32:
+
+| Operación | Petición y respuesta |
 |---|---|
-| `LECTOR n: NO RESPONDE` | 3,3 V, GND, SCK/MISO/MOSI en 18/19/23 y el `SDA` en su pin |
-| Un lector funciona solo pero no con el otro | Su `SDA` está en el pin equivocado |
-| Lecturas erráticas o reinicios | Cables más cortos, el condensador, un buen puerto USB |
-| `[WIFI] Sin WiFi` | SSID, clave y que la red sea de 2,4 GHz |
-| `[SUPABASE] Error 401` | Clave incorrecta o incompleta |
-| `[SUPABASE] Error 404` | No se ejecutó `schema.sql` |
-| `CAJON n: (sin objeto asignado)` | Ningún recurso tiene ese `lector` con `dispositivo_id` igual a `DISPOSITIVO_ID` |
-| `TAG DESCONOCIDO` | Ese UID no está en `recursos.uid_tag` |
+| Mapeo | `GET /dispositivos/stand-01/configuracion` → `[{uid,activo_id,codigo,canal}]` |
+| LED | `GET /dispositivos/stand-01/senales` → `{canales:[1,2,3]}` con los canales solicitados |
+| Eventos | `POST /dispositivos/stand-01/eventos` con `{arranque,eventos:[{secuencia,tipo,canal,uid,antiguedad_ms}]}` → HTTP 202 `{aceptados,duplicados}` |
+| Heartbeat | `POST /dispositivos/stand-01/heartbeat` con `{arranque,firmware,rssi}` → HTTP 204 |
 
-## Seguridad
+`INICIO` envía `canal:null` y `uid:null`; los demás eventos informan el canal y UID. `antiguedad_ms` se calcula nuevamente al retransmitir para conservar la antigüedad de la observación. La deduplicación usa dispositivo, arranque y secuencia.
 
-- La anon key va dentro del firmware. Con las reglas de `schema.sql` solo puede leer, insertar eventos y llamar a `latido` y `senalizar`.
-- El sketch no verifica el certificado TLS de Supabase (`setInsecure()`), lo cual vale para un prototipo pero no para producción.
+Un lote solo se retira cuando `aceptados + duplicados` coincide con su cantidad. Ante un error de autenticación o validación se conserva: corrige el registro del dispositivo, lector o datos informados antes de que la cola se llene. Una configuración inválida o mayor a 32 registros conserva la caché anterior.
+
+`PRESENTE` representa inventario al encender; no confirma por sí solo una devolución. El backend determina si un retiro o devolución corresponde al préstamo y posición esperados.
+
+## TLS y problemas frecuentes
+
+El firmware verifica certificado y nombre del servidor con la CA oficial **GTS Root R4**, usada por la cadena del dominio al verificar esta integración. SNTP (`pool.ntp.org`, `time.nist.gov`) establece la hora antes de las peticiones TLS, sin detener los lectores. Sin hora válida, certificado válido o conectividad se conserva la operación para reintentar; no se desactiva TLS.
+
+| Mensaje o problema | Revisar |
+|---|---|
+| `LECTOR n: NO RESPONDE` | 3,3 V, GND, SPI 18/19/23 y SS correspondiente |
+| Lecturas erráticas | Cableado corto, alimentación y separación entre lectores |
+| `[WIFI] Sin WiFi` | SSID, contraseña y red de 2,4 GHz |
+| Esperando sincronización de hora | Acceso DNS/NTP de la red |
+| Sin respuesta TLS | Fecha, dominio, cadena de certificados y CA configurada |
+| `[API] Error HTTP 401` | Clave propia e identificador del dispositivo |
+| `[API] Error HTTP 422` | Canal registrado y formato de los eventos; el lote sigue pendiente |
+| Configuración inválida | Mapeo, canales 1–3 y límite local de 32 registros |
+| `TAG DESCONOCIDO` | Registrar el UID real del activo y su posición en Administración |
+
+Si cambia la CA del dominio, actualiza el certificado desde el emisor oficial y recompila. No sustituyas la verificación por `setInsecure()`.
+
+Referencias: [contrato API](../docs/03-api/openapi.yaml), [ejemplo HTTPS de Espressif](https://github.com/espressif/arduino-esp32/blob/3.2.0/libraries/HTTPClient/examples/BasicHttpsClient/BasicHttpsClient.ino), [CA oficial GTS Root R4](https://pki.goog/repo/certs/gtsr4.pem) y [ArduinoJson](https://arduinojson.org/v7/api/jsondocument/).
+
+La compilación y revisión del contrato no sustituyen una prueba con ESP32, lectores, tags y WiFi físicos.
