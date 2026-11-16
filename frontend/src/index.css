@@ -1122,6 +1122,21 @@ button.enlace { border: 0; padding: 0; background: none; color: inherit; cursor:
 .search-line > .field, .search-line > .form-field { flex: 1; }
 .inventory-search { display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr) auto; gap: 16px; align-items: end; }
 .visor video { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.qr-reader .visor {
+  position: relative;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  max-height: 320px;
+  overflow: hidden;
+  isolation: isolate;
+  margin-bottom: 0;
+}
+.qr-reader .visor video { position: absolute; inset: 0; display: block; min-height: 0; }
+.qr-manual { border-top: 1px solid var(--borde); padding-top: 12px; color: var(--texto-2); font-size: 14px; }
+.qr-manual summary { cursor: pointer; padding: 8px 0; }
+.qr-manual form { margin-top: 12px; color: var(--navy); }
+.access-error:focus { outline: 2px solid var(--error); outline-offset: 4px; border-radius: var(--r-control); }
 .visor:empty { color: white; }
 .chart-scroll { overflow-x: auto; }
 .chart-scroll .barras { gap: 16px; align-items: end; padding-bottom: 8px; }
