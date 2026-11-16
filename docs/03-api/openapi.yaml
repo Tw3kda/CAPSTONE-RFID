@@ -61,7 +61,7 @@ paths:
     post:
       tags: [Autenticación]
       summary: Identificar usuario por credencial QR o ID institucional
-      description: Se confía en el QR o ID institucional registrado por el administrador y se exige una cuenta activa. Toda nueva cuenta requiere ID institucional; el QR es opcional y se recomienda registrar ambos. No hay contraseña, segundo factor ni verificación Microsoft. Una copia del identificador permite identificarse como su titular (limitación aceptada). metodo=qr compara el QR registrado; metodo=id compara el ID institucional independiente, nunca derivado del QR. Sin el identificador del método elegido devuelve 401, sin sustitución entre métodos.
+      description: El método id exige ID institucional registrado y clave de 12 a 128 caracteres sin recortar espacios. El método qr no acepta clave y exige un carné asociado explícitamente a una cuenta activa. El formato QR completo es E000000000 + ID numérico de longitud variable + exactamente seis hexadecimales finales. Se valida el ID contra el registro independiente y se compara el HMAC canónico sin sufijo. El sufijo puede variar; no se acepta la parte canónica sola ni un UID RFID de equipo. No se habilita QR por el mero hecho de tener ID. Los roles provienen del servidor. Los hashes completos legados solo admiten su QR exacto hasta reasociación explícita. No hay Microsoft ni segundo factor; una copia del carné permite suplantación (limitación aceptada).
       security: []
       requestBody:
         required: true
@@ -72,7 +72,18 @@ paths:
               required: [metodo, credencial]
               properties:
                 metodo: {type: string, enum: [qr, id]}
-                credencial: {type: string}
+                credencial: {type: string, minLength: 1, maxLength: 256}
+                clave: {type: string, format: password, writeOnly: true, minLength: 12, maxLength: 128}
+              additionalProperties: false
+              allOf:
+                - if:
+                    properties: {metodo: {const: id}}
+                  then:
+                    required: [clave]
+                - if:
+                    properties: {metodo: {const: qr}}
+                  then:
+                    not: {required: [clave]}
       responses:
         '200':
           description: Sesión iniciada
@@ -80,6 +91,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Sesion'}
         '401': {$ref: '#/components/responses/NoAutorizado'}
+        '422': {description: Solicitud inválida o factores incompatibles con el método; nunca incluye entradas sensibles.}
   /auth/refresh:
     post:
       tags: [Autenticación]
@@ -374,15 +386,18 @@ paths:
           application/json:
             schema:
               type: object
-              required: [nombre, rol, identificador_institucional]
+              required: [nombre, rol, identificador_institucional, clave]
               properties:
                 nombre: {type: string}
                 correo: {type: string, format: email}
                 rol: {$ref: '#/components/schemas/Rol'}
-                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: QR opcional del carné, independiente del ID institucional; nunca se devuelve.}
-                identificador_institucional: {type: string, minLength: 1, maxLength: 256, description: ID institucional obligatorio conocido y registrado por el administrador, independiente del QR; se guarda solo su HMAC y no se devuelve.}
+                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: 'QR completo opcional E000000000+ID numérico registrado+seis hexadecimales; se guarda solo el HMAC canónico y no se devuelve.'}
+                identificador_institucional: {type: string, minLength: 1, maxLength: 256, description: 'ID institucional obligatorio registrado por el administrador; se guarda solo su HMAC. Debe ser numérico para asociar un carné.'}
+                clave: {type: string, format: password, writeOnly: true, minLength: 12, maxLength: 128, description: 'Obligatoria en altas; preserva espacios y nunca se devuelve.'}
       responses:
         '201': {description: Usuario creado}
+        '409': {$ref: '#/components/responses/Conflicto'}
+        '422': {description: Campos inválidos o carné incompatible con el ID registrado; sin entradas sensibles.}
         '403': {$ref: '#/components/responses/Prohibido'}
   /usuarios/{id}:
     patch:
@@ -401,9 +416,12 @@ paths:
                 rol: {$ref: '#/components/schemas/Rol'}
                 activo: {type: boolean}
                 identificador_institucional: {type: string, minLength: 1, maxLength: 256, description: Omitir conserva el ID; un valor válido lo reemplaza; null o vacío son rechazados. Nunca se devuelve el valor registrado.}
-                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: Omitir conserva el QR; un valor lo registra o reemplaza; null retira el carné. Vacío se rechaza. Nunca se devuelve el QR registrado.}
+                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: 'Omitir conserva el carné; un QR completo del ID registrado lo reasocia canónicamente; null lo retira. Vacío o un QR ajeno se rechazan. Cambiar el ID también reasocia un carné existente al nuevo ID numérico.'}
+                clave: {type: string, format: password, writeOnly: true, minLength: 12, maxLength: 128, description: 'Omitir conserva la clave; un valor la restablece. Null o vacío se rechazan. Nunca se devuelve.'}
       responses:
         '200': {description: Usuario actualizado}
+        '409': {$ref: '#/components/responses/Conflicto'}
+        '422': {description: Campos inválidos o carné incompatible con el ID registrado; sin entradas sensibles.}
         '403': {$ref: '#/components/responses/Prohibido'}
   /posiciones:
     get:

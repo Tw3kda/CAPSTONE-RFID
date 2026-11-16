@@ -9,12 +9,12 @@ def test_first_admin_bootstrap_is_local_explicit_and_refuses_existing_administra
     from app.cli import bootstrap_admin
 
     with pytest.raises(ValueError):
-        bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42")
+        bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42", "SyntheticKey42")
     with engine.begin() as db:
         db.execute(text("DELETE FROM usuario"))
     with pytest.raises(ValueError):
-        bootstrap_admin("Initial Admin", "")
-    user_id = bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42")
+        bootstrap_admin("Initial Admin", "", "SyntheticKey42")
+    user_id = bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42", "SyntheticKey42")
     with engine.connect() as db:
         row = db.execute(
             text(

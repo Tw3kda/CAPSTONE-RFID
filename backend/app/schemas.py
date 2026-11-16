@@ -1,12 +1,21 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    StringConstraints,
+    model_validator,
+)
 
 RoleName = Literal["usuario", "encargado", "administrador"]
 AssetState = Literal["disponible", "prestado", "en_revision"]
 Nonempty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 UID = Annotated[str, StringConstraints(pattern=r"^[0-9A-Fa-f]{8,20}$")]
+Password = Annotated[SecretStr, Field(min_length=12, max_length=128)]
 
 
 class Input(BaseModel):
@@ -35,6 +44,7 @@ class UsuarioNuevo(Input):
     correo: str | None = Field(default=None, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     credencial: Nonempty | None = Field(default=None, max_length=256)
     identificador_institucional: Nonempty = Field(max_length=256)
+    clave: Password
 
 
 class UsuarioEdicion(Input):
@@ -43,9 +53,12 @@ class UsuarioEdicion(Input):
     activo: bool | None = None
     identificador_institucional: Nonempty | None = Field(default=None, max_length=256)
     credencial: Nonempty | None = Field(default=None, max_length=256)
+    clave: Password | None = None
 
     @model_validator(mode="after")
     def preserve_required_identifier(self):
+        if "clave" in self.model_fields_set and self.clave is None:
+            raise ValueError("Password cannot be removed")
         if (
             "identificador_institucional" in self.model_fields_set
             and self.identificador_institucional is None
@@ -146,6 +159,15 @@ class Refresh(Input):
 class Login(Input):
     metodo: Literal["qr", "id"]
     credencial: Nonempty = Field(max_length=256)
+    clave: Password | None = None
+
+    @model_validator(mode="after")
+    def method_requires_matching_factors(self):
+        if self.metodo == "id" and self.clave is None:
+            raise ValueError("ID login requires a password")
+        if self.metodo == "qr" and "clave" in self.model_fields_set:
+            raise ValueError("QR login does not accept a password")
+        return self
 
 
 class Tokens(BaseModel):

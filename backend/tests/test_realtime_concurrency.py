@@ -79,11 +79,14 @@ def test_websocket_cookie_session_and_revocation_follow_current_account(client, 
         json={
             "nombre": "Socket",
             "rol": "usuario",
-            "credencial": "SYNTHETIC-WS-42",
-            "identificador_institucional": "SYNTHETIC-WS-ID-42",
+            "clave": "SyntheticKey42",
+            "credencial": "E000000000740342A1B2C3",
+            "identificador_institucional": "740342",
         },
     )
-    login = client.post("/api/auth/login", json={"metodo": "qr", "credencial": "SYNTHETIC-WS-42"})
+    login = client.post(
+        "/api/auth/login", json={"metodo": "qr", "credencial": "E000000000740342A1B2C3"}
+    )
     user_id = login.json()["usuario"]["id"]
     cookie = login.headers["set-cookie"].split(";", 1)[0]
     with client.websocket_connect(

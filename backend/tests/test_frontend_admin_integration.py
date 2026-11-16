@@ -107,18 +107,19 @@ def test_staff_can_find_exact_registered_credential_without_revealing_it(
         json={
             "nombre": "Synthetic Person",
             "rol": "usuario",
-            "credencial": "SYNTHETIC-SEARCH-42",
-            "identificador_institucional": "SYNTHETIC-SEARCH-ID-42",
+            "clave": "SyntheticKey42",
+            "credencial": "E000000000740142A1B2C3",
+            "identificador_institucional": "740142",
         },
     )
     assert created.status_code == 201
-    found = client.get("/api/usuarios", headers=manager, params={"q": "SYNTHETIC-SEARCH-42"})
+    found = client.get("/api/usuarios", headers=manager, params={"q": "E000000000740142A1B2C3"})
     assert found.status_code == 200
     assert found.json() == [created.json()]
-    assert "SYNTHETIC-SEARCH-42" not in found.text and "credencial_uid" not in found.text
-    assert client.get("/api/usuarios?q=SYNTHETIC-SEARCH", headers=manager).json() == []
+    assert "E000000000740142A1B2C3" not in found.text and "credencial_uid" not in found.text
+    assert client.get("/api/usuarios?q=E0000000007401", headers=manager).json() == []
     assert client.get("/api/usuarios?q=Synthetic", headers=manager).json() == [created.json()]
-    assert client.get("/api/usuarios?q=SYNTHETIC-SEARCH-42", headers=headers).status_code == 403
+    assert client.get("/api/usuarios?q=E000000000740142A1B2C3", headers=headers).status_code == 403
 
 
 def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_managed(
@@ -130,8 +131,9 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
         json={
             "nombre": "Synthetic Identity",
             "rol": "usuario",
-            "credencial": "SYNTHETIC-QR-77",
-            "identificador_institucional": "SYNTHETIC-ID-77",
+            "clave": "SyntheticKey42",
+            "credencial": "E000000000740177A1B2C3",
+            "identificador_institucional": "740177",
         },
     )
     assert created.status_code == 201
@@ -144,31 +146,39 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
             json={
                 "nombre": "Duplicate QR",
                 "rol": "usuario",
-                "credencial": "SYNTHETIC-QR-77",
-                "identificador_institucional": "SYNTHETIC-DIFFERENT-ID",
+                "clave": "SyntheticKey42",
+                "credencial": "E000000000740177A1B2C3",
+                "identificador_institucional": "740179",
             },
         ).status_code
-        == 409
+        == 422
     )
     for method, value, expected in (
-        ("qr", "SYNTHETIC-QR-77", 200),
-        ("id", "SYNTHETIC-ID-77", 200),
-        ("id", "SYNTHETIC-QR-77", 401),
-        ("qr", "SYNTHETIC-ID-77", 401),
+        ("qr", "E000000000740177A1B2C3", 200),
+        ("id", "740177", 200),
+        ("id", "E000000000740177A1B2C3", 401),
+        ("qr", "740177", 401),
     ):
         assert (
-            client.post("/api/auth/login", json={"metodo": method, "credencial": value}).status_code
+            client.post(
+                "/api/auth/login",
+                json={
+                    "metodo": method,
+                    "credencial": value,
+                    **({"clave": "SyntheticKey42"} if method == "id" else {}),
+                },
+            ).status_code
             == expected
         )
-    found = client.get("/api/usuarios?q=SYNTHETIC-ID-77", headers=manager)
+    found = client.get("/api/usuarios?q=740177", headers=manager)
     assert found.json() == [created.json()]
-    assert "SYNTHETIC-ID-77" not in found.text
+    assert "740177" not in found.text
     with engine.connect() as db:
         stored = db.scalar(
             text("SELECT identificador_institucional_hash FROM usuario WHERE id=:id"),
             {"id": identity},
         )
-        assert stored and "SYNTHETIC-ID-77" not in stored
+        assert stored and "740177" not in stored
     assert (
         client.post(
             "/api/usuarios",
@@ -176,7 +186,8 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
             json={
                 "nombre": "Duplicate",
                 "rol": "usuario",
-                "identificador_institucional": "SYNTHETIC-ID-77",
+                "clave": "SyntheticKey42",
+                "identificador_institucional": "740177",
             },
         ).status_code
         == 409
@@ -186,7 +197,7 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
             f"/api/usuarios/{identity}",
             headers=headers,
             json={
-                "identificador_institucional": "SYNTHETIC-ID-78",
+                "identificador_institucional": "740178",
             },
         ).status_code
         == 403
@@ -196,20 +207,22 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
             f"/api/usuarios/{identity}",
             headers=admin,
             json={
-                "identificador_institucional": "SYNTHETIC-ID-78",
+                "identificador_institucional": "740178",
             },
         ).status_code
         == 200
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "id", "credencial": "SYNTHETIC-ID-77"}
+            "/api/auth/login",
+            json={"metodo": "id", "clave": "SyntheticKey42", "credencial": "740177"},
         ).status_code
         == 401
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "id", "credencial": "SYNTHETIC-ID-78"}
+            "/api/auth/login",
+            json={"metodo": "id", "clave": "SyntheticKey42", "credencial": "740178"},
         ).status_code
         == 200
     )
@@ -225,13 +238,14 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "id", "credencial": "SYNTHETIC-ID-78"}
+            "/api/auth/login",
+            json={"metodo": "id", "clave": "SyntheticKey42", "credencial": "740178"},
         ).status_code
         == 200
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "qr", "credencial": "SYNTHETIC-QR-77"}
+            "/api/auth/login", json={"metodo": "qr", "credencial": "E000000000740178A1B2C3"}
         ).status_code
         == 200
     )
@@ -240,8 +254,18 @@ def test_registered_institutional_id_is_distinct_from_qr_searchable_and_admin_ma
 def test_new_user_requires_institutional_id_and_can_have_no_qr(client, admin):
     for payload in (
         {"nombre": "Missing", "rol": "usuario"},
-        {"nombre": "QR only", "rol": "usuario", "credencial": "SYNTHETIC-QR-ONLY"},
-        {"nombre": "Null ID", "rol": "usuario", "identificador_institucional": None},
+        {
+            "nombre": "QR only",
+            "rol": "usuario",
+            "clave": "SyntheticKey42",
+            "credencial": "SYNTHETIC-QR-ONLY",
+        },
+        {
+            "nombre": "Null ID",
+            "rol": "usuario",
+            "clave": "SyntheticKey42",
+            "identificador_institucional": None,
+        },
     ):
         assert client.post("/api/usuarios", headers=admin, json=payload).status_code == 422
     created = client.post(
@@ -250,13 +274,15 @@ def test_new_user_requires_institutional_id_and_can_have_no_qr(client, admin):
         json={
             "nombre": "ID only",
             "rol": "usuario",
+            "clave": "SyntheticKey42",
             "identificador_institucional": "SYNTHETIC-ID-ONLY",
         },
     )
     assert created.status_code == 201
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "id", "credencial": "SYNTHETIC-ID-ONLY"}
+            "/api/auth/login",
+            json={"metodo": "id", "clave": "SyntheticKey42", "credencial": "SYNTHETIC-ID-ONLY"},
         ).status_code
         == 200
     )
@@ -275,7 +301,8 @@ def test_admin_can_register_or_remove_optional_qr_without_changing_institutional
         json={
             "nombre": "Optional QR",
             "rol": "usuario",
-            "identificador_institucional": "SYNTHETIC-OPTIONAL-ID",
+            "clave": "SyntheticKey42",
+            "identificador_institucional": "740200",
         },
     )
     assert created.status_code == 201
@@ -285,14 +312,14 @@ def test_admin_can_register_or_remove_optional_qr_without_changing_institutional
             f"/api/usuarios/{identity}",
             headers=admin,
             json={
-                "credencial": "SYNTHETIC-OPTIONAL-QR",
+                "credencial": "E000000000740200A1B2C3",
             },
         ).status_code
         == 200
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "qr", "credencial": "SYNTHETIC-OPTIONAL-QR"}
+            "/api/auth/login", json={"metodo": "qr", "credencial": "E000000000740200A1B2C3"}
         ).status_code
         == 200
     )
@@ -304,13 +331,14 @@ def test_admin_can_register_or_remove_optional_qr_without_changing_institutional
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "qr", "credencial": "SYNTHETIC-OPTIONAL-QR"}
+            "/api/auth/login", json={"metodo": "qr", "credencial": "E000000000740200A1B2C3"}
         ).status_code
         == 401
     )
     assert (
         client.post(
-            "/api/auth/login", json={"metodo": "id", "credencial": "SYNTHETIC-OPTIONAL-ID"}
+            "/api/auth/login",
+            json={"metodo": "id", "clave": "SyntheticKey42", "credencial": "740200"},
         ).status_code
         == 200
     )

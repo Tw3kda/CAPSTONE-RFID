@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from app.database import engine
 from app.models import Auditoria, Rol, Usuario
 from app.retention import purge_expired
-from app.security import credential_digest
+from app.security import credential_digest, password_hash, registered_card_digest
 
 
-def bootstrap_admin(name: str, institutional_identifier: str, credential: str | None = None) -> int:
+def bootstrap_admin(
+    name: str, institutional_identifier: str, password: str, credential: str | None = None
+) -> int:
     name, institutional_identifier = name.strip(), institutional_identifier.strip()
     credential = credential.strip() or None if credential is not None else None
     if (
@@ -38,8 +40,11 @@ def bootstrap_admin(name: str, institutional_identifier: str, credential: str | 
             nombre=name,
             rol=role,
             activo=True,
-            credencial_uid=credential_digest(credential),
+            credencial_uid=registered_card_digest(
+                credential, credential_digest(institutional_identifier)
+            ),
             identificador_institucional_hash=credential_digest(institutional_identifier),
+            clave_hash=password_hash(password),
         )
         db.add(user)
         db.flush()
@@ -70,8 +75,9 @@ def main():
     try:
         if args.command == "bootstrap-admin":
             identifier = getpass.getpass("ID institucional (obligatorio): ")
+            password = getpass.getpass("Clave (12 a 128 caracteres): ")
             credential = getpass.getpass("QR del carné (opcional; Enter para omitir): ")
-            identity = bootstrap_admin(args.nombre, identifier, credential)
+            identity = bootstrap_admin(args.nombre, identifier, password, credential)
             print(json.dumps({"administrador_id": identity}))
         else:
             print(json.dumps(purge_expired(dry_run=not args.execute)))

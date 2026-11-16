@@ -2,7 +2,7 @@
 
 ## Acceso y usuarios
 
-- **RF-01.** El sistema debe permitir identificar a un usuario mediante QR de credencial o identificador institucional, previa validación contra el registro autorizado. Cada nueva cuenta debe registrar como mínimo su ID institucional; el QR del carné es opcional y se recomienda registrar ambos. Son identificadores independientes registrados por el administrador; no se deriva el ID del QR ni se sustituye uno por otro al autenticar.
+- **RF-01.** El sistema debe autenticar mediante ID institucional y clave, o mediante QR del carné sin clave. Cada alta requiere ID y clave de 12 a 128 caracteres; el QR es opcional y se registra explícitamente por un administrador. El QR completo tiene formato E000000000 + ID numérico de longitud variable + seis caracteres hexadecimales finales; se valida contra el ID registrado y su vínculo de carné. El sufijo cambia y no forma parte de la identidad; se conserva solo el HMAC canónico del prefijo e ID. No se da acceso por QR a cuentas sin carné asociado. Los roles siempre provienen del servidor.
 - **RF-02.** El backend debe aplicar los roles Usuario, Encargado y Administrador a las operaciones protegidas.
 - **RF-03.** El administrador debe poder gestionar usuarios y sus roles.
 

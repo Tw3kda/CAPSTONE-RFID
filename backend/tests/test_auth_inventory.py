@@ -11,20 +11,22 @@ def test_login_trusts_only_registered_active_credential_and_never_client_roles(c
     payload = {
         "nombre": "Eva",
         "rol": "usuario",
-        "credencial": "SYNTHETIC-CREDENTIAL-42",
-        "identificador_institucional": "SYNTHETIC-INSTITUTIONAL-42",
+        "clave": "SyntheticKey42",
+        "credencial": "E000000000740042A1B2C3",
+        "identificador_institucional": "740042",
     }
     registered = client.post("/api/usuarios", headers=admin, json=payload)
     assert registered.status_code == 201
     for method, credential in (
-        ("qr", "SYNTHETIC-CREDENTIAL-42"),
-        ("id", "SYNTHETIC-INSTITUTIONAL-42"),
+        ("qr", "E000000000740042A1B2C3"),
+        ("id", "740042"),
     ):
         logged = client.post(
             "/api/auth/login",
             json={
                 "metodo": method,
                 "credencial": credential,
+                **({"clave": "SyntheticKey42"} if method == "id" else {}),
             },
         )
         assert logged.status_code == 200
@@ -41,7 +43,7 @@ def test_login_trusts_only_registered_active_credential_and_never_client_roles(c
             "/api/auth/login",
             json={
                 "metodo": "qr",
-                "credencial": "SYNTHETIC-CREDENTIAL-42",
+                "credencial": "E000000000740042A1B2C3",
                 "rol": "administrador",
             },
         ).status_code
@@ -54,7 +56,7 @@ def test_login_trusts_only_registered_active_credential_and_never_client_roles(c
             "/api/auth/login",
             json={
                 "metodo": "qr",
-                "credencial": "SYNTHETIC-CREDENTIAL-42",
+                "credencial": "E000000000740042A1B2C3",
             },
         ).status_code
         == 401
@@ -81,7 +83,12 @@ def test_authentication_requires_signed_unexpired_access_and_active_account(clie
     )
     response = client.get("/api/auth/me", headers=headers)
     assert response.status_code == 200
-    assert response.json() == {"id": 3, "nombre": "Ana", "rol": "usuario", "activo": True}
+    assert response.json() == {
+        "id": 3,
+        "nombre": "Ana",
+        "rol": "usuario",
+        "activo": True,
+    }
     with engine.begin() as db:
         db.execute(text("UPDATE usuario SET activo=false WHERE id=3"))
     assert client.get("/api/auth/me", headers=headers).status_code == 401
@@ -202,9 +209,10 @@ def test_admin_can_edit_asset_and_manage_account_roles_with_encrypted_personal_d
         json={
             "nombre": "Eva",
             "rol": "usuario",
+            "clave": "SyntheticKey42",
             "correo": "eva@example.test",
-            "credencial": "INST-EVA",
-            "identificador_institucional": "SYNTHETIC-EVA-ID",
+            "credencial": "E000000000740043A1B2C3",
+            "identificador_institucional": "740043",
         },
     )
     assert created.status_code == 201
@@ -214,7 +222,7 @@ def test_admin_can_edit_asset_and_manage_account_roles_with_encrypted_personal_d
             text("SELECT correo,credencial_uid FROM usuario WHERE id=:id"), {"id": user_id}
         ).one()
         assert stored.correo and "eva@example.test" not in stored.correo
-        assert stored.credencial_uid and "INST-EVA" not in stored.credencial_uid
+        assert stored.credencial_uid and "E000000000740043A1B2C3" not in stored.credencial_uid
     assert client.get("/api/usuarios", headers=headers).status_code == 403
     assert [u["id"] for u in client.get("/api/usuarios?q=Eva", headers=manager).json()] == [user_id]
     assert (

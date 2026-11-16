@@ -27,24 +27,44 @@ After applying migrations, create the first administrator explicitly from a loca
 docker compose -f docker-compose.dev.yml exec backend python -m app.cli bootstrap-admin --nombre "Administrador"
 ```
 
-The command prompts for the mandatory institutional ID and optional card QR without echoing
-either value. It refuses to run if an
+The command prompts for the mandatory institutional ID, a 12–128 character password, and optional
+card QR without echoing any of them. It refuses to run if an
 administrator already exists. No default administrator or public registration endpoint
 exists. For production use the same command with `docker-compose.yml` from the trusted
 deployment shell. Subsequent users and roles are managed through the administrator API.
 
-QR and institutional ID are independent trusted local identifiers, each matched against
-its own protected unique registration. Every new user and the bootstrap administrator
-must have an institutional ID; the card QR is optional, and registering both is recommended.
-Administrators can replace the ID, but cannot clear it. They can register, replace or
-explicitly remove a card with `credencial: null`; omitting either field preserves it.
-Neither method invokes Microsoft or a second factor. `metodo=id` never falls back to a QR,
-and `metodo=qr` never uses the institutional ID. Neither identifier is returned by the API.
-The migration leaves the ID column nullable only to preserve legacy users lacking it:
-an administrator must register their known institutional ID explicitly, without deriving
-it from the QR or inventing a value. New API/CLI accounts cannot omit it.
-Copying another person's credential permits identification as that person; this
-limitation is accepted for this capstone. Roles always come from the server.
+ID login requires both the registered institutional ID and password. Passwords preserve
+whitespace and contain 12–128 characters. Every new API/CLI account requires a password;
+administrators can reset it using PATCH `clave`, while omission preserves it and null/empty
+is rejected. Responses and validation errors never echo passwords or hashes. Argon2id uses
+the existing cryptography dependency: 19 MiB, two iterations, one lane, a random 16-byte salt,
+and a PHC-encoded result. Comparison uses constant time. See the
+[OWASP password storage guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+and [cryptography Argon2id API](https://cryptography.io/en/44.0.2/hazmat/primitives/key-derivation-functions/#argon2id).
+
+QR login does not accept a password. Complete cards use `E000000000` + a variable-length
+numeric institutional ID + exactly six hexadecimal suffix characters. The backend removes
+exactly the last six characters, validates the ID against the account's independent HMAC,
+and matches the explicitly registered canonical card HMAC. The canonical value alone is not
+a login input; the client sends the full scanned card. Suffixes beginning with digits are
+handled without a greedy ID extraction. A registered ID alone never grants QR access.
+The optional card can be removed with `credencial: null`; omission preserves it. Replacing
+an ID also rebinds an existing card to that ID, without changing the account primary key.
+Non-numeric institutional IDs can still use ID/password; registering a card requires a
+numeric ID. Neither identifier nor its hash is returned. Copying a valid card's stable
+identity can impersonate its holder; that QR trust limitation remains accepted. No Microsoft
+or additional factor is involved. Roles always come from the server.
+
+Upgrade code and apply Alembic `c8d7e6f5a432` through the designated migration process before
+assigning passwords. This additive migration leaves legacy password hashes null and never
+invents a password. Such accounts fail closed for ID login. A legacy full-card HMAC can
+still authenticate its exact complete card, only when its parsed ID matches the independently
+registered ID; arbitrary old credential strings are rejected. An administrator must explicitly
+rebind the complete card with PATCH `credencial` to enable changing suffixes. Do not derive
+or backfill unknown institutional IDs from stored hashes. Setting passwords and rebinding
+production accounts is a separate authorized operation after compatible code is deployed;
+a data update cannot activate these behaviors in an old deployment. Preserve all signing,
+encryption and device keys, account primary keys and historical references.
 
 Administrator provisioning screens can list `/api/espacios`, `/api/gabinetes`,
 `/api/dispositivos` and `/api/lectores`; these four lists require the administrator role.

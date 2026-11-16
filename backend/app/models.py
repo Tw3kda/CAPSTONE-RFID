@@ -42,6 +42,7 @@ class Usuario(Base):
     correo: Mapped[str | None] = mapped_column(Text)
     credencial_uid: Mapped[str | None] = mapped_column(Text)
     identificador_institucional_hash: Mapped[str | None] = mapped_column(Text)
+    clave_hash: Mapped[str | None] = mapped_column(Text)
     consentimiento_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     rol: Mapped[Rol] = relationship(lazy="joined")

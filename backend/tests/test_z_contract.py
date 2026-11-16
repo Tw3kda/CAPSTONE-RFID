@@ -64,8 +64,9 @@ def test_contract_success_responses_match_all_http_operations(
         json={
             "nombre": "Contract",
             "rol": "usuario",
-            "credencial": "SYNTHETIC-CONTRACT-42",
-            "identificador_institucional": "SYNTHETIC-CONTRACT-ID-42",
+            "clave": "SyntheticKey42",
+            "credencial": "E000000000740442A1B2C3",
+            "identificador_institucional": "740442",
         },
     )
     login = checked(
@@ -74,7 +75,7 @@ def test_contract_success_responses_match_all_http_operations(
         auth={},
         json={
             "metodo": "qr",
-            "credencial": "SYNTHETIC-CONTRACT-42",
+            "credencial": "E000000000740442A1B2C3",
         },
     ).json()
     checked(

@@ -2,7 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -31,6 +33,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 health = APIRouter(prefix="/api/health", tags=["Infraestructura"])
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, error: RequestValidationError):
+    # Validation must never echo passwords, card content or the submitted body.
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": [
+                {key: issue[key] for key in ("type", "loc", "msg")} for issue in error.errors()
+            ]
+        },
+    )
 
 
 @health.get("/live")

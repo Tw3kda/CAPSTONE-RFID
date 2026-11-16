@@ -12,8 +12,9 @@ Table usuario {
   rol_id bigint [not null, ref: > rol.id]
   nombre varchar(150) [not null]
   correo text [note: 'Protegido mediante cifrado']
-  credencial_uid text [unique, note: 'HMAC del QR registrado localmente; identificador de confianza, no prueba contra suplantación']
+  credencial_uid text [unique, note: 'HMAC del QR canónico E000000000+ID numérico registrado; excluye el sufijo dinámico de seis hexadecimales. Nullable para cuentas sin carné. Las credenciales legadas completas requieren reasociación explícita para admitir cambios de sufijo']
   identificador_institucional_hash text [unique, note: 'HMAC del ID institucional registrado explícitamente por administrador, obligatorio en altas nuevas y no eliminable por API; nullable solo para preservar cuentas legadas pendientes de registrar ID. Independiente del QR, nunca derivado de él']
+  clave_hash text [note: 'Argon2id PHC con sal aleatoria; obligatorio en altas API/CLI, nullable para cuentas legadas sin acceso por ID hasta asignación. Nunca se expone']
   consentimiento_at timestamptz
   activo boolean [not null, default: true]
 }

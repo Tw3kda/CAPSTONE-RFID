@@ -32,10 +32,14 @@ from app.security import (
     Staff,
     User,
     active_user,
+    card_identity,
     credential_digest,
     decode_token,
+    password_hash,
     protect,
+    registered_card_digest,
     session_tokens,
+    verify_password,
 )
 from app.services import (
     asset_view,
@@ -66,16 +70,27 @@ def set_session_cookie(response: Response, tokens: dict):
 
 @auth.post("/login", response_model=Sesion)
 def login(data: Login, db: Db, response: Response):
-    identity_column = (
-        Usuario.credencial_uid if data.metodo == "qr" else Usuario.identificador_institucional_hash
-    )
-    user = db.scalar(
-        select(Usuario).where(
-            identity_column == credential_digest(data.credencial),
-            Usuario.activo.is_(True),
+    query = select(Usuario).where(Usuario.activo.is_(True))
+    if data.metodo == "qr":
+        try:
+            identifier, canonical = card_identity(data.credencial)
+        except ValueError:
+            raise HTTPException(401, "Invalid credential") from None
+        query = query.where(
+            Usuario.identificador_institucional_hash == credential_digest(identifier),
+            # Exact full-card hashes are supported only during explicit legacy re-binding.
+            Usuario.credencial_uid.in_(
+                [credential_digest(canonical), credential_digest(data.credencial)]
+            ),
         )
-    )
-    if user is None:
+    else:
+        query = query.where(
+            Usuario.identificador_institucional_hash == credential_digest(data.credencial)
+        )
+    user = db.scalar(query)
+    if user is None or (
+        data.metodo == "id" and not verify_password(data.clave.get_secret_value(), user.clave_hash)
+    ):
         raise HTTPException(401, "Invalid credential")
     tokens = session_tokens(user)
     set_session_cookie(response, tokens)
@@ -234,10 +249,15 @@ def users(db: Db, user: Staff, q: str | None = None):
     query = select(Usuario)
     if q:
         digest = credential_digest(q)
+        card_digests = [digest]
+        try:
+            card_digests.append(credential_digest(card_identity(q)[1]))
+        except ValueError:
+            pass
         query = query.where(
             or_(
                 Usuario.nombre.ilike(f"%{q}%"),
-                Usuario.credencial_uid == digest,
+                Usuario.credencial_uid.in_(card_digests),
                 Usuario.identificador_institucional_hash == digest,
             )
         )
@@ -247,13 +267,15 @@ def users(db: Db, user: Staff, q: str | None = None):
 @administration.post("/usuarios", status_code=201, response_model=UsuarioOut)
 def create_user(data: UsuarioNuevo, db: Db, user: Admin):
     role = db.scalar(select(Rol).where(Rol.nombre == data.rol))
+    identifier_hash = credential_digest(data.identificador_institucional)
     row = Usuario(
         nombre=data.nombre,
         rol=role,
         activo=True,
         correo=protect(data.correo),
-        credencial_uid=credential_digest(data.credencial),
-        identificador_institucional_hash=credential_digest(data.identificador_institucional),
+        credencial_uid=registered_card_digest(data.credencial, identifier_hash),
+        identificador_institucional_hash=identifier_hash,
+        clave_hash=password_hash(data.clave.get_secret_value()),
     )
     db.add(row)
     audit(db, user, "crear_usuario", row)
@@ -265,12 +287,20 @@ def create_user(data: UsuarioNuevo, db: Db, user: Admin):
 def edit_user(id: int, data: UsuarioEdicion, db: Db, user: Admin):
     row = get_or_404(db, Usuario, id)
     values = data.model_dump(exclude_unset=True)
-    if "identificador_institucional" in values:
-        row.identificador_institucional_hash = credential_digest(
-            values.pop("identificador_institucional"),
-        )
+    identifier = values.pop("identificador_institucional", None)
+    if identifier is not None:
+        row.identificador_institucional_hash = credential_digest(identifier)
     if "credencial" in values:
-        row.credencial_uid = credential_digest(values.pop("credencial"))
+        row.credencial_uid = registered_card_digest(
+            values.pop("credencial"), row.identificador_institucional_hash
+        )
+    elif identifier is not None and row.credencial_uid is not None:
+        # Preserve the explicit card binding when the administrator changes the ID.
+        row.credencial_uid = registered_card_digest(
+            "E000000000" + identifier + "000000", row.identificador_institucional_hash
+        )
+    if "clave" in values:
+        row.clave_hash = password_hash(values.pop("clave").get_secret_value())
     if any(value is None for value in values.values()):
         raise HTTPException(422, "Account fields cannot be null")
     role = values.pop("rol", None)
