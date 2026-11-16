@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import exists, func, select
 
 from app.models import Activo, Evento, Prestamo
+from app.recommendations import Recomendacion, generate_recommendation
 from app.schemas import ActivoOut
 from app.security import Db, User
 from app.services import asset_view
@@ -25,12 +26,6 @@ class ResumenAnalisis(BaseModel):
     baja_utilizacion: list[int]
 
 
-class Recomendacion(BaseModel):
-    texto: str
-    activos_relacionados: list[int]
-    datos_insuficientes: bool
-
-
 def reusable_assets(db, now):
     recent_withdrawal = exists(
         select(Prestamo.id).where(
@@ -49,9 +44,7 @@ def reusable_assets(db, now):
     ).all()
 
 
-@analysis.get("/resumen", response_model=ResumenAnalisis)
-def summary(db: Db, user: User):
-    now = datetime.now(UTC)
+def analysis_summary(db, now):
     cutoff = now - timedelta(days=90)
     counts = dict(db.execute(select(Activo.estado, func.count()).group_by(Activo.estado)).all())
     week_expression = func.date_trunc("week", Prestamo.retiro_at)
@@ -84,20 +77,26 @@ def summary(db: Db, user: User):
     }
 
 
+@analysis.get("/resumen", response_model=ResumenAnalisis)
+def summary(db: Db, user: User):
+    return analysis_summary(db, datetime.now(UTC))
+
+
 @analysis.get("/reutilizables", response_model=list[ActivoOut])
 def reusable(db: Db, user: User):
     return [asset_view(a) for a in reusable_assets(db, datetime.now(UTC))]
 
 
-@analysis.post("/recomendacion", response_model=Recomendacion)
-def recommendation(db: Db, user: User):
+def recommendation_context(db):
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=90)
     unused = reusable_assets(db, now)
     maintenance = db.scalars(
         select(Activo).where(Activo.estado == "en_revision").order_by(Activo.id)
     ).all()
-    related = sorted({a.id for a in unused + maintenance})
+    # Keep both reuse and maintenance represented while bounding external disclosure/cost.
+    candidates = sorted(unused[:4] + maintenance[:4], key=lambda asset: asset.id)
+    related = [asset.id for asset in candidates]
     # An observation older than the window is evidence of historical tracking, not a prediction.
     observed = set(
         db.scalars(
@@ -115,23 +114,35 @@ def recommendation(db: Db, user: User):
         )
     )
     insufficient = not related or any(asset_id not in observed for asset_id in related)
-    parts = []
-    if unused:
-        parts.append(
-            f"Hay {len(unused)} activos disponibles sin retiros registrados en los últimos "
-            "90 días. Revise sus fichas antes de adquirir otros."
-        )
-    if maintenance:
-        parts.append(f"Hay {len(maintenance)} activos en revisión; compruebe su mantenimiento.")
-    if insufficient:
-        parts.append(
-            "El historial disponible no cubre 90 días para todos los recursos; "
-            "la ausencia de retiros no demuestra desuso. No se realizan predicciones."
-        )
-    if not parts:
-        parts.append("No se identifican recursos disponibles sin uso ni activos en revisión.")
+    metrics = analysis_summary(db, now)
     return {
-        "texto": " ".join(parts),
-        "activos_relacionados": related,
+        "periodo_dias": 90,
+        "inventario": {
+            field: metrics[field] for field in ("disponibles", "prestados", "en_revision")
+        },
+        "uso_semanal": metrics["uso_semanal"],
+        "total_baja_utilizacion": len(unused),
+        "total_candidatos_mantenimiento": len(maintenance),
         "datos_insuficientes": insufficient,
+        "candidatos": [
+            {
+                "id": asset.id,
+                "nombre": asset.nombre,
+                "categoria": asset.categoria.nombre,
+                "estado": asset.estado,
+                "condicion": asset.condicion,
+                "ultima_revision_at": asset.ultima_revision_at.isoformat()
+                if asset.ultima_revision_at
+                else None,
+            }
+            for asset in candidates
+        ],
     }
+
+
+@analysis.post("/recomendacion", response_model=Recomendacion)
+def recommendation(db: Db, user: User):
+    context = recommendation_context(db)
+    # Release the read transaction/connection before waiting on the external provider.
+    db.rollback()
+    return generate_recommendation(context)

@@ -339,13 +339,15 @@ paths:
     post:
       tags: [Análisis]
       summary: Obtener recomendación contextual de reutilización y mantenimiento
-      description: Recomendación descriptiva de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). datos_insuficientes indica que no hay evidencia de seguimiento de al menos 90 días para todos los activos sugeridos; no presenta predicciones. Ocultar/mostrar es estado de presentación del cliente y no elimina datos del servidor.
+      description: Una llamada directa a OpenAI Responses API genera texto en español de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). Solo se envían métricas agregadas del período y hasta ocho candidatos seleccionados por backend con nombre, categoría, estado, condición y última revisión; nunca usuarios, identificadores personales, préstamos individuales, RFID, posiciones ni credenciales. La salida JSON se valida y sus IDs deben pertenecer a candidatos enviados. datos_insuficientes se calcula en backend y no puede ser contradicho por el modelo. Sin configuración o ante fallo no se sustituye por una recomendación heurística. Ocultar/mostrar conserva la respuesta en cliente sin nueva llamada; regenerar requiere otro POST explícito.
       responses:
         '200':
           description: Recomendación
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Recomendacion'}
+        '502': {description: 'Respuesta del proveedor inválida, rechazada, incompleta o incompatible con los datos; no se devuelve recomendación.'}
+        '503': {description: 'Proveedor sin configurar, timeout, límite de solicitudes o indisponibilidad temporal; no se devuelve recomendación.'}
 
   /usuarios:
     get:

@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 from sqlalchemy import URL
 
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     refresh_token_seconds: int = 604800
     secure_cookies: bool = True
     retention_hold: bool = False
+    openai_api_key: SecretStr | None = None
+    openai_model: str = "gpt-6.1-terra"
+    openai_timeout_seconds: float = Field(default=20, gt=0, le=30)
     websocket_origins: list[str] = [
         "https://thesora.redskycol.com",
         "http://127.0.0.1:5173",

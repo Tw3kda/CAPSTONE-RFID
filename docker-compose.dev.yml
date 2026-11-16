@@ -43,7 +43,10 @@ services:
     build:
       context: ./backend
       target: development
-    environment: *database
+    environment:
+      <<: *database
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6.1-terra}
     volumes:
       - ./backend:/app
       - ./docs:/docs:ro

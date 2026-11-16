@@ -39,7 +39,7 @@
 ## Análisis
 
 - **RF-25.** La aplicación debe mostrar disponibilidad, uso por período y recursos con baja utilización.
-- **RF-26.** La aplicación debe permitir generar, ocultar y volver a mostrar una recomendación sobre reutilización o mantenimiento basada en los datos existentes.
+- **RF-26.** La aplicación debe permitir generar mediante OpenAI una recomendación sobre reutilización o mantenimiento basada en métricas agregadas y candidatos del inventario. Debe permitir ocultarla y volver a mostrarla sin otra llamada; regenerar requiere una acción explícita. Los fallos del proveedor deben mostrarse como errores, sin simular una respuesta de IA mediante reglas locales.
 - **RF-27.** Desde la recomendación, el usuario debe poder consultar las fichas de los recursos sugeridos.
 
 El análisis usa una ventana móvil de 90 días en UTC. La baja utilización se refiere a activos

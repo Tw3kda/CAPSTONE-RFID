@@ -1,5 +1,7 @@
 """Integration fixtures: real PostgreSQL, real auth and real application dependencies."""
 
+import io
+import json
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -112,3 +114,38 @@ def device(client, admin):
         )
         assert registered.status_code == 201
     return {"X-Device-Key": key}
+
+
+@pytest.fixture
+def recommendation_provider(monkeypatch):
+    """Deterministic external Responses API boundary for non-provider integration tests."""
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-contract-provider-key")
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+
+    def exchange(request, timeout):
+        context = json.loads(json.loads(request.data)["input"])
+        result = {
+            "texto": "Revise los recursos existentes antes de adquirir otros. "
+            "El historial insuficiente no demuestra desuso.",
+            "activos_relacionados": [item["id"] for item in context["candidatos"]],
+            "datos_insuficientes": context["datos_insuficientes"],
+        }
+        return io.BytesIO(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "message",
+                            "content": [{"type": "output_text", "text": json.dumps(result)}],
+                        },
+                    ],
+                }
+            ).encode()
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", exchange)
+    yield
+    get_settings.cache_clear()

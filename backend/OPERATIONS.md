@@ -101,6 +101,43 @@ Schedule the `retention --execute` command daily through the VPS scheduler after
 configuring backups and the applicable institutional retention instruction. This is a
 deployment step; the API does not add a background worker or scheduler service.
 
+## OpenAI recommendations
+
+`POST /api/analisis/recomendacion` makes one direct HTTPS request to the OpenAI
+Responses API. It uses server-only `OPENAI_API_KEY` from the same root `.env`, and
+`OPENAI_MODEL` defaults to `gpt-6.1-terra`. Never put the key in a `VITE_*` variable.
+Compose injects these variables only into backend, not migration, database or frontend.
+Recreate backend after changing its environment.
+
+The input contains 90-day availability/weekly confirmed-withdrawal aggregates and at
+most eight candidates: up to four available low-use assets and four in review. Each
+candidate has only ID, name, category, state, condition and last review time. No users,
+personal identifiers, individual loans, RFID UIDs, positions or device credentials are
+sent. Free text is data in a separate JSON input, never instructions. The backend
+selects candidates and computes the insufficient-history flag; AI cannot change states.
+
+The Spanish instructions request reuse before purchasing and technical review before
+replacement, without inventing statistics, guaranteeing compatibility or predicting
+failures. A strict JSON schema and Pydantic validate the existing response format.
+Returned IDs must be a unique subset of candidates, and the history flag must agree.
+
+One explicit generation has a 20-second timeout, `store=false`, low reasoning effort
+and at most 1200 output tokens. There are no tools, automatic retries, background jobs,
+stored recommendations or heuristic fallback. Missing configuration, timeout, rate
+limits or temporary failures return 503. Invalid/refused/incomplete output or an
+incompatible provider request returns 502 without provider details. Hiding/reopening
+the current result does not generate again; regenerating requires an explicit POST.
+
+The model ID was checked against the actual `/v1/models` catalog for the configured
+key. Deterministic tests replace only external HTTPS, retaining routing and PostgreSQL.
+A live generation check must use synthetic isolated inventory, never personal QR/IDs.
+
+Primary integration references: [Responses and instructions](https://developers.openai.com/api/docs/guides/text),
+[structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
+[API errors](https://developers.openai.com/api/docs/guides/error-codes),
+[server-side keys](https://developers.openai.com/api/docs/guides/production-best-practices),
+and the [model catalog](https://developers.openai.com/api/docs/models/gpt-6.1-terra).
+
 ## Tests and CI
 
 Tests must use a separate PostgreSQL database ending in `_test`. Fixtures refuse to

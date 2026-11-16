@@ -28,7 +28,7 @@ def test_published_openapi_covers_every_documented_operation_and_websocket(clien
 
 
 def test_contract_success_responses_match_all_http_operations(
-    client, headers, admin, manager, device
+    client, headers, admin, manager, device, recommendation_provider
 ):
     source = contract()
     observed = set()

@@ -6,7 +6,7 @@ from app.database import engine
 
 
 def test_analysis_uses_confirmed_withdrawals_not_preparations_and_marks_missing_history(
-    client, headers
+    client, headers, recommendation_provider
 ):
     summary = client.get("/api/analisis/resumen", headers=headers)
     assert summary.status_code == 200
