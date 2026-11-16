@@ -8,6 +8,7 @@ servers:
 security:
   - bearerAuth: []
 tags:
+  - name: Infraestructura
   - name: Autenticación
   - name: Inventario
   - name: Préstamos
@@ -16,6 +17,46 @@ tags:
   - name: Dispositivos
 
 paths:
+  /health/live:
+    get:
+      tags: [Infraestructura]
+      summary: Comprobar que el proceso de la API responde
+      security: []
+      responses:
+        '200':
+          description: Proceso disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ok}
+  /health/ready:
+    get:
+      tags: [Infraestructura]
+      summary: Comprobar disponibilidad de API y conexión PostgreSQL
+      security: []
+      responses:
+        '200':
+          description: API y base de datos disponibles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, database]
+                properties:
+                  status: {type: string, const: ok}
+                  database: {type: string, const: ok}
+        '503':
+          description: Base de datos no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail: {type: string, const: Database unavailable}
   /auth/login:
     post:
       tags: [Autenticación]
