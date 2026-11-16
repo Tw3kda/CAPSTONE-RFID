@@ -1,6 +1,7 @@
-﻿import { useEffect } from 'react'
-import { Link, useRoute, navigate } from './router.jsx'
-import { useSession } from './session.jsx'
+import { useEffect } from 'react'
+import { Link } from './router.jsx'
+import { useRoute, navigate } from './navigation.js'
+import { useSession } from './hooks.js'
 import { Page, Shell, PageHeader, ErrorNotice } from './components.jsx'
 import { Acceso, AccesoQR } from './screens/Acceso.jsx'
 import { Inicio } from './screens/Inicio.jsx'
@@ -41,4 +42,3 @@ export default function App() {
     default: return <Page titulo="Página no encontrada"><Link to="/inicio" className="btn btn--primary">Ir al inicio</Link></Page>
   }
 }
-

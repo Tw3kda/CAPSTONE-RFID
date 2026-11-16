@@ -1,7 +1,8 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Shell, PageHeader, Field, ErrorNotice } from '../components.jsx'
-import { Link, navigate } from '../router.jsx'
-import { useSession } from '../session.jsx'
+import { Link } from '../router.jsx'
+import { navigate } from '../navigation.js'
+import { useSession } from '../hooks.js'
 
 export function Acceso() {
   const { client } = useSession()
@@ -26,12 +27,12 @@ export function AccesoQR() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [cameraMessage, setCameraMessage] = useState('')
-  async function identify(value) {
+  const identify = useCallback(async (value) => {
     setBusy(true); setError(null); setCamera(false)
     try { await client.login('qr', value); navigate('/inicio') }
     catch (err) { setError(err.status === 401 ? new Error('QR no registrado o cuenta inactiva. Revisa la credencial o usa tu ID universitario.') : err) }
     finally { setBusy(false) }
-  }
+  }, [client])
   useEffect(() => {
     if (!camera) return
     let active = true
@@ -61,7 +62,6 @@ export function AccesoQR() {
     }
     start()
     return () => { active = false; clearTimeout(timer); stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null }
-  }, [camera])
+  }, [camera, identify])
   return <Shell sinNav><PageHeader titulo="Escanea tu credencial" subtitulo="Coloca el código QR dentro del recuadro." /><div className="container content"><div className="col-principal pila"><div className="visor"><video ref={video} muted playsInline aria-label="Vista de cámara" /></div><p className="note" role="status">{cameraMessage || 'Activa la cámara para leer tu credencial.'}</p><div className="actions"><button className="btn btn--primary" disabled={busy} onClick={() => { setCameraMessage('Abriendo cámara…'); setCamera((value) => !value) }}>{camera ? 'Detener cámara' : 'Activar cámara'}</button><Link to="/acceso" className="btn btn--secondary">Usar ID universitario</Link></div><form className="card pila" onSubmit={(event) => { event.preventDefault(); identify(credential) }}><Field label="Contenido del QR" hint="Alternativa para una credencial digital o un lector externo."><input className="field" value={credential} onChange={(event) => setCredential(event.target.value)} required maxLength={256} autoComplete="off" /></Field><button className="btn btn--secondary" disabled={busy}>{busy ? 'Identificando…' : 'Ingresar con QR'}</button></form><ErrorNotice error={error} /></div></div></Shell>
 }
-

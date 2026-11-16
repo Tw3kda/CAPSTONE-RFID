@@ -1,7 +1,9 @@
-﻿import { useState } from 'react'
-import { Page, LoadState, Field, ErrorNotice, formatDate, stateLabel, locationText } from '../components.jsx'
+import { useState } from 'react'
+import { Page, LoadState, Field, ErrorNotice } from '../components.jsx'
+import { formatDate, stateLabel, locationText } from '../presentation.js'
 import { Link } from '../router.jsx'
-import { useApi, useMutation, useSession } from '../session.jsx'
+
+import { useApi, useMutation, useSession } from '../hooks.js'
 import { queryString } from '../api.js'
 
 const sections = {
@@ -89,4 +91,3 @@ export function Admin({ section }) {
   }
   return <Page activo="admin" titulo="Administración" subtitulo="Gestiona las cuentas, el inventario y su configuración física."><nav className="admin-nav" aria-label="Administración">{Object.entries(sections).map(([key,[label]]) => <Link key={key} to={`/admin/${key}`} aria-current={key === section ? 'page' : undefined}>{label}</Link>)}</nav><div className="admin-toolbar"><h2>{sections[section][0]}</h2><button className="btn btn--primary" disabled={!!editor} onClick={() => { setEditor({}); setSaved(false); setCreatedKey(null) }}>{sections[section][1]}</button></div>{createdKey && <section className="card pila key-result" role="status"><h2>Dispositivo registrado: {createdKey.id}</h2><p>Guarda esta clave en la configuración del ESP32. Se entrega una sola vez.</p><Field label="Clave del dispositivo"><textarea className="field" readOnly value={createdKey.api_key} spellCheck="false" /></Field><button className="btn btn--secondary" onClick={() => setCreatedKey(null)}>Ya guardé la clave</button></section>}{saved && !createdKey && <p className="card card--ok" role="status">Cambios guardados.</p>}{editor && <Editor key={editor.id || 'new'} section={section} row={editor.id ? editor : null} onSaved={onSaved} onCancel={() => setEditor(null)} />}{section === 'usuarios' && <form className="admin-search search-line" onSubmit={(event) => { event.preventDefault(); setQuery(search.trim()) }}><Field label="Buscar usuarios"><input className="field" placeholder="Nombre o ID universitario registrado" value={search} onChange={(event) => setSearch(event.target.value)} /></Field><button className="btn btn--secondary">Buscar</button></form>}<LoadState request={request}>{(items) => items.length ? <div className="table-scroll" tabIndex="0" role="region" aria-label={`Tabla de ${sections[section][0]}`}><table className="admin-table"><caption>{sections[section][0]} registrados</caption><thead><tr>{fields.map(([label]) => <th key={label} scope="col">{label}</th>)}{sections[section][2] && <th scope="col">Acciones</th>}</tr></thead><tbody>{items.map((row) => <tr key={row.id || row.posicion_id}>{fields.map(([label,render]) => <td key={label}>{render(row)}</td>)}{sections[section][2] && <td><button className="btn btn--secondary" aria-label={`Editar ${row.nombre || `lector ${row.id}`}`} onClick={() => { setEditor(row); setSaved(false) }}>Editar</button></td>}</tr>)}</tbody></table></div> : <p className="card note">No hay registros{query ? ' que coincidan con la búsqueda' : ''}.</p>}</LoadState></Page>
 }
-

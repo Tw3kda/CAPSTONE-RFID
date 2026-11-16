@@ -1,7 +1,9 @@
-﻿import { useState } from 'react'
-import { Page, LoadState, ResourceRow, ShelfMap, Field, ErrorNotice, stateLabel, locationText, formatDate } from '../components.jsx'
+import { useState } from 'react'
+import { Page, LoadState, ResourceRow, ShelfMap, Field, ErrorNotice } from '../components.jsx'
+import { stateLabel, locationText, formatDate } from '../presentation.js'
 import { Link } from '../router.jsx'
-import { useApi, useMutation } from '../session.jsx'
+
+import { useApi, useMutation } from '../hooks.js'
 import { queryString } from '../api.js'
 
 export function Inventario({ q0 = '' }) {
@@ -25,4 +27,3 @@ export function Ubicacion({ id }) {
   const [requested, setRequested] = useState(false)
   return <Page activo="inventario" titulo="Encuentra el recurso" subtitulo="Sigue la guía hasta el espacio asignado."><div className="col-principal pila"><LoadState request={map}>{(value) => <ShelfMap mapa={value} />}</LoadState><ErrorNotice error={action.error} />{requested && <p className="card card--ok" role="status">Señal solicitada al dispositivo. El indicador se activará cuando el ESP32 reciba la solicitud.</p>}<div className="actions"><button className="btn btn--primary" disabled={action.busy || !map.data} onClick={async () => { const value = await action.mutate(`/activos/${id}/senal`); if (value !== undefined) setRequested(true) }}>Señalar posición</button>{asset.data?.estado === 'disponible' && <Link to={`/prestamo?id=${id}`} className="btn btn--secondary">Registrar préstamo</Link>}<Link to={`/recurso/${id}`} className="btn btn--secondary">Volver a la ficha</Link></div></div></Page>
 }
-

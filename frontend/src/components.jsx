@@ -1,5 +1,7 @@
-﻿import { Link, navigate } from './router.jsx'
-import { useSession } from './session.jsx'
+import { Link } from './router.jsx'
+import { navigate } from './navigation.js'
+import { stateLabel } from './presentation.js'
+import { useSession } from './hooks.js'
 import logo from './assets/Thesora_Imagotipo_Negativo_Transparente.svg'
 
 const TRAZOS = {
@@ -44,9 +46,6 @@ export function PageHeader({ titulo, subtitulo }) {
 export function Page({ activo, titulo, subtitulo, children }) {
   return <Shell activo={activo}><PageHeader titulo={titulo} subtitulo={subtitulo} /><div className="container content">{children}</div></Shell>
 }
-export const formatDate = (value) => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Sin registro'
-export const locationText = (value) => value ? `${value.espacio} → Gabinete ${value.gabinete} → Estante ${value.estante} → Posición ${value.codigo}` : 'Sin ubicación registrada'
-export const stateLabel = (state) => ({ disponible: 'Disponible', prestado: 'Prestado', en_revision: 'En revisión', pendiente_retiro: 'Pendiente de retiro', activo: 'Pendiente por devolver', validando_devolucion: 'Validando RFID', esperando_posicion: 'Esperando posición', devuelto: 'Devuelto', cancelado: 'Cancelado' })[state] || state
 export function ResourceRow({ recurso }) {
   return <Link to={`/recurso/${recurso.id}`} className="row"><span className="row__top"><span className="row__nombre">{recurso.nombre}</span><Icon name="chevron" size={16} /></span><span className="row__meta">{recurso.categoria} · {recurso.codigo}</span><span className="row__bottom"><span className="row__ubicacion"><Icon name="pin" size={14} />{recurso.ubicacion.gabinete} · Est. {recurso.ubicacion.estante} · {recurso.ubicacion.codigo}</span><span className={recurso.estado === 'en_revision' ? 'estado estado--revision' : 'estado'}>{stateLabel(recurso.estado)}</span></span></Link>
 }

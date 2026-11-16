@@ -1,7 +1,9 @@
-﻿import { useState } from 'react'
-import { Shell, Icon, LoadState, formatDate, locationText } from '../components.jsx'
-import { Link, navigate } from '../router.jsx'
-import { useApi, useSession } from '../session.jsx'
+import { useState } from 'react'
+import { Shell, Icon, LoadState } from '../components.jsx'
+import { formatDate, locationText } from '../presentation.js'
+import { Link } from '../router.jsx'
+import { navigate } from '../navigation.js'
+import { useApi, useSession } from '../hooks.js'
 
 export function Inicio() {
   const { user } = useSession()
@@ -13,4 +15,3 @@ export function Inicio() {
     return <div className="dos-col"><div className="pila">{pending.length ? pending.slice(0,3).map((loan) => <Link key={loan.id} to={`/mis-recursos/prestamo?id=${loan.id}`} className="card card--link"><p className="overline">Pendiente por devolver</p><h2>{loan.activo_nombre}</h2><p className="note">Fecha prevista: {formatDate(loan.devolucion_esperada_at)} · Ver préstamo ›</p></Link>) : <p className="card note">No tienes recursos pendientes por devolver.</p>}<section className="card"><h2>Análisis del laboratorio</h2><p className="note">Aprovecha lo disponible y revisa mantenimiento antes de comprar o reemplazar equipos.</p><p className="derecha"><Link to="/analisis" className="enlace">Ver análisis ↗</Link></p></section></div><aside className="card"><h2>Tu actividad</h2><p className="overline">Pendientes</p><p>{pending.length} {pending.length === 1 ? 'recurso' : 'recursos'} por devolver</p><p className="overline">Último movimiento</p><p className="note">{latest ? `${latest.activo_nombre} · ${formatDate(latest.devolucion_at || latest.retiro_at)}` : 'Sin movimientos físicos registrados.'}</p>{latest && <><p className="overline">Ubicación</p><p className="note">{locationText(latest.ubicacion_asignada)}</p></>}</aside></div>
   }}</LoadState></div></Shell>
 }
-

@@ -1,0 +1,3 @@
+export const formatDate = (value) => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Sin registro'
+export const locationText = (value) => value ? `${value.espacio} → Gabinete ${value.gabinete} → Estante ${value.estante} → Posición ${value.codigo}` : 'Sin ubicación registrada'
+export const stateLabel = (state) => ({ disponible: 'Disponible', prestado: 'Prestado', en_revision: 'En revisión', pendiente_retiro: 'Pendiente de retiro', activo: 'Pendiente por devolver', validando_devolucion: 'Validando RFID', esperando_posicion: 'Esperando posición', devuelto: 'Devuelto', cancelado: 'Cancelado' })[state] || state

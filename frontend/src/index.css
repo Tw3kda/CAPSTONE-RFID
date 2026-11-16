@@ -1,4 +1,4 @@
-﻿/* Thesora · fundamentos del manual de marca */
+/* Thesora · fundamentos del manual de marca */
 :root {
   --navy: #002661;
   --navy-hover: #001b46;
@@ -1153,5 +1153,3 @@ button.enlace { border: 0; padding: 0; background: none; color: inherit; cursor:
   .shell--nav { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
   .admin-toolbar { align-items: start; flex-wrap: wrap; }
 }
-
-

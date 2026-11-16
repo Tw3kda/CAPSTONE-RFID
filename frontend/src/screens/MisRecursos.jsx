@@ -1,7 +1,9 @@
-﻿import { useState } from 'react'
-import { Page, LoadState, Summary, ShelfMap, Esperando, ErrorNotice, formatDate, locationText, stateLabel, Field } from '../components.jsx'
-import { Link, navigate } from '../router.jsx'
-import { useApi, useMutation, useSession } from '../session.jsx'
+import { useState } from 'react'
+import { Page, LoadState, Summary, ShelfMap, Esperando, ErrorNotice, Field } from '../components.jsx'
+import { formatDate, locationText, stateLabel } from '../presentation.js'
+import { Link } from '../router.jsx'
+import { navigate } from '../navigation.js'
+import { useApi, useMutation, useSession } from '../hooks.js'
 const finished = (loan) => ['devuelto','cancelado'].includes(loan.estado)
 
 function LoanRow({ loan, to }) {
@@ -49,4 +51,3 @@ export function DetallePrestamo({ id, operation }) {
   }
   return <Page activo={withdrawal ? 'prestamos' : 'mis-recursos'} titulo={title} subtitulo={receipt ? 'Movimiento confirmado por el sistema RFID.' : undefined}><LoadState request={loan}>{(item) => <div className="col-principal pila">{(error || problem) && <div className="card aviso" role="alert"><h2>Qué ocurrió</h2><p>{wrongPosition ? 'El equipo no está confirmado en su posición asignada. El préstamo permanece abierto.' : 'El RFID leído no corresponde al recurso esperado. La operación sigue pendiente.'}</p><h2>Siguiente paso</h2><p>{wrongPosition ? `Coloca el recurso en ${locationText(item.ubicacion_asignada)}.` : 'Presenta el equipo correcto y vuelve a intentar la lectura.'}</p><button className="btn btn--secondary" onClick={() => { setDismissed(event); setProblem(false) }}>{wrongPosition ? 'Ver ubicación' : 'Reintentar lectura'}</button></div>}<Summary titulo={item.activo_nombre} items={[[ 'Responsable', item.responsable_nombre ],[ 'Entregado por', item.entregado_por_nombre ],[ 'Estado', stateLabel(item.estado) ],[ 'Retiro', formatDate(item.retiro_at) ],[ 'Devolución prevista', formatDate(item.devolucion_esperada_at) ],...(returned ? [[ 'Devuelto', formatDate(item.devolucion_at) ]] : []),[ 'Ubicación asignada', locationText(item.ubicacion_asignada) ]]} />{isPending && !error && !problem && <>{withdrawal ? <p>Retira únicamente el recurso indicado. El lector confirmará su salida.</p> : item.estado === 'validando_devolucion' ? <p>Presenta el equipo ante el lector para verificar su RFID.</p> : <LoanMap assetId={item.activo_id} />}<Esperando>{withdrawal ? 'Esperando detección física del retiro…' : item.estado === 'validando_devolucion' ? 'Esperando lectura RFID…' : 'Esperando detección física en la posición asignada…'}</Esperando></>}<ErrorNotice error={action.error} /><div className="actions">{item.estado === 'activo' && !receipt && <button className="btn btn--primary" onClick={beginReturn} disabled={action.busy}>Devolver recurso</button>}{isPending && <button className="btn btn--secondary" onClick={cancel} disabled={action.busy}>Cancelar operación</button>}{item.estado === 'esperando_posicion' && !problem && <button className="btn btn--secondary" onClick={() => setProblem(true)}>Reportar problema</button>}{receipt && <Link to="/prestamo" className="btn btn--primary">Nuevo préstamo</Link>}<Link to={`/recurso/${item.activo_id}/ubicacion`} className="btn btn--secondary">Ver ubicación asignada</Link><Link to="/mis-recursos" className="btn btn--secondary">Volver a mis recursos</Link><Link to="/inicio" className="btn btn--ghost">Ir al inicio</Link></div>{action.error?.status === 409 && <button className="btn btn--secondary" onClick={loan.reload}>Consultar estado actual</button>}</div>}</LoadState></Page>
 }
-

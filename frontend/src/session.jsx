@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { api } from './api.js'
 import { connectRealtime } from './realtime.js'
 
-const SessionContext = createContext(null)
+import { SessionContext } from './session-context.js'
 
 export function SessionProvider({ children, client = api, Socket }) {
   const session = useSyncExternalStore(client.subscribe, client.getSession)
@@ -29,38 +29,4 @@ export function SessionProvider({ children, client = api, Socket }) {
     return () => window.removeEventListener('thesora:refresh', invalidate)
   }, [])
   return <SessionContext.Provider value={{ session, user: session?.usuario, ready, error, client, revision, event, connection, invalidate }}>{children}</SessionContext.Provider>
-}
-
-export const useSession = () => useContext(SessionContext)
-
-export function useApi(path) {
-  const { client, revision } = useSession()
-  const [state, setState] = useState({ data: null, loading: true, error: null })
-  const [retry, setRetry] = useState(0)
-  useEffect(() => {
-    const controller = new AbortController()
-    setState({ data: null, loading: true, error: null })
-    client.request(path, { signal: controller.signal }).then((data) => {
-      if (!controller.signal.aborted) setState({ data, loading: false, error: null })
-    }).catch((error) => {
-      if (!controller.signal.aborted) setState({ data: null, loading: false, error })
-    })
-    return () => controller.abort()
-  }, [path, client, revision, retry])
-  return { ...state, reload: () => setRetry((value) => value + 1) }
-}
-
-export function useMutation() {
-  const { client, invalidate } = useSession()
-  const [state, setState] = useState({ busy: false, error: null })
-  async function mutate(path, body, method = 'POST') {
-    setState({ busy: true, error: null })
-    try {
-      const result = await client.request(path, { method, ...(body !== undefined ? { body } : {}) })
-      setState({ busy: false, error: null })
-      invalidate()
-      return result
-    } catch (error) { setState({ busy: false, error }); return undefined }
-  }
-  return { ...state, mutate, clearError: () => setState((value) => ({ ...value, error: null })) }
 }
