@@ -10,7 +10,8 @@ Desde la raíz del repositorio:
 
 ```powershell
 Copy-Item .env.example .env # Solo la primera vez; conservar el .env existente.
-# Cambiar POSTGRES_PASSWORD por una contraseña aleatoria antes de iniciar.
+# Configurar APP_NAME y claves aleatorias POSTGRES_PASSWORD, AUTH_SIGNING_KEY y DATA_ENCRYPTION_KEY.
+# DATA_ENCRYPTION_KEY debe ser una clave Fernet; conservarla cuando existan datos.
 docker compose -f docker-compose.dev.yml config --quiet
 docker compose -f docker-compose.dev.yml up -d --build --wait
 cd frontend
@@ -18,7 +19,7 @@ npm ci
 npm run dev
 ```
 
-Existe un único `.env`, en la raíz. Compose lo usa para interpolar variables e inyecta al backend únicamente las de PostgreSQL; Vite lee desde esa misma raíz y publica únicamente variables `VITE_*`. No crear `.env` adicionales por servicio ni entorno. `.env.example` contiene valores de ejemplo y `.env` está ignorado por Git. El `.env` creado durante la configuración local ya contiene una contraseña aleatoria.
+Existe un único `.env`, en la raíz. Compose inyecta al backend la configuración PostgreSQL y las claves de sesión/protección de datos; Vite lee desde esa misma raíz y publica únicamente variables `VITE_*`. No crear `.env` adicionales por servicio ni entorno. `.env.example` no contiene secretos. El `.env` local ya tiene claves aleatorias; no rotar la clave de cifrado sin migrar los datos protegidos.
 
 - Frontend Vite: http://127.0.0.1:5173
 - API directa: http://127.0.0.1:8001/api/health/ready
@@ -28,7 +29,7 @@ Existe un único `.env`, en la raíz. Compose lo usa para interpolar variables e
 
 `DEV_API_PORT` cambia el puerto host del backend; actualizar también `DEV_API_PROXY_TARGET`. `VITE_DEV_PORT` cambia el puerto de Vite. Los puertos 8001 y 5173 se enlazan solo a loopback. El frontend corre fuera de Docker y el backend recarga al editar `backend/app/`.
 
-El servicio `migrate` ejecuta `alembic upgrade head` una vez antes del backend. El esqueleto Alembic aún no contiene revisiones ni modelos de negocio: solo prepara el mecanismo de migraciones, sin importar el esquema histórico de Supabase. Las futuras migraciones deben revisarse y ejecutarse desde este único servicio.
+El servicio `migrate` ejecuta `alembic upgrade head` una vez antes del backend y crea el esquema de negocio y los tres roles. No importa datos de Supabase. Las migraciones se revisan y ejecutan desde este único servicio. El primer administrador se crea por CLI local explícita; ver [operación del backend](backend/OPERATIONS.md).
 
 ```powershell
 docker compose -f docker-compose.dev.yml ps -a
@@ -40,7 +41,7 @@ npm run build
 npm run lint
 ```
 
-Detener Vite con Ctrl+C. Desde la raíz, `docker compose -f docker-compose.dev.yml down` detiene el stack conservando la base de datos. No usar `down -v` para datos que deban conservarse. El volumen de desarrollo es `thesora-dev_db_data` y está separado del proyecto de producción.
+Detener Vite con Ctrl+C. Desde la raíz, `docker compose -f docker-compose.dev.yml down` conserva la base de datos. No usar `down -v`. Con `APP_NAME=thesora`, el proyecto de desarrollo sigue siendo `thesora-dev` y conserva el volumen existente `thesora-dev_db_data`. Los contenedores se llaman `${APP_NAME}-db`, `${APP_NAME}-backend` y `${APP_NAME}-migrate`; producción añade `${APP_NAME}-frontend`. Los proyectos Compose, volúmenes y redes quedan separados por APP_NAME. Dos stacks simultáneos en el mismo host requieren APP_NAME distintos; para una comprobación temporal cambiar solo la variable del proceso, sin crear otro `.env`. Cambiar APP_NAME selecciona otro volumen: no hacerlo para datos existentes sin una migración deliberada.
 
 ## Producción en Dokploy
 
@@ -57,17 +58,19 @@ Compose no publica puertos de host en producción. PostgreSQL solo pertenece a l
 La comprobación local del Compose de producción usa un proyecto separado, sin publicar puertos ni contactar el VPS:
 
 ```powershell
-docker compose -p thesora-prod-check -f docker-compose.yml config --quiet
-docker compose -p thesora-prod-check -f docker-compose.yml up -d --build --wait
-docker compose -p thesora-prod-check -f docker-compose.yml exec -T frontend wget -qO- http://127.0.0.1:8080/api/health/ready
-docker compose -p thesora-prod-check -f docker-compose.yml down
+$env:APP_NAME = 'thesora-prod-check' # Override temporal; el .env se conserva.
+docker compose -f docker-compose.yml config --quiet
+docker compose -f docker-compose.yml up -d --build --wait
+docker compose -f docker-compose.yml exec -T frontend wget -qO- http://127.0.0.1:8080/api/health/ready
+docker compose -f docker-compose.yml down
+Remove-Item Env:APP_NAME # Volver al valor de .env.
 ```
 
 Para esta comprobación se necesita que exista `dokploy-network` localmente; si no existe, puede crearse con `docker network create dokploy-network`. Esto no configura DNS, TLS ni un despliegue remoto.
 
 ## Alcance actual
 
-El frontend conserva el prototipo y sus datos simulados. El backend nuevo solo implementa `/api/health/live` y `/api/health/ready`; este último ejecuta `SELECT 1` real y devuelve 503 si PostgreSQL falla. La configuración deja listo el transporte `/api`, pero no implementa autenticación, inventario, préstamos ni WebSockets de negocio. `docs/03-api/openapi.yaml` describe el contrato completo objetivo; `/api/openapi.json` refleja solo las rutas que existen hoy.
+El frontend conserva el prototipo y sus datos simulados. El backend implementa identificación QR/ID registrada, roles, inventario y ubicación, préstamos/devoluciones confirmados por RFID, configuración de ESP32, deduplicación de lotes, WebSocket autenticado, análisis descriptivo y retención por CLI. El contrato está en `docs/03-api/openapi.yaml` y se publica en `/api/openapi.json`. La [guía de operación](backend/OPERATIONS.md) documenta bootstrap, claves, dispositivos, retención y verificaciones. Las pruebas de rendimiento mantienen los umbrales requeridos y fallan si el entorno no los alcanza; no implican aceptación productiva del hardware o TLS remoto.
 
 - `backend/`: arranque FastAPI, configuración SQLAlchemy y Alembic.
 - `frontend/`: React/Vite y build de producción.

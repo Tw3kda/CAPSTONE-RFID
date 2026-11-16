@@ -4,7 +4,8 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 
@@ -129,8 +130,11 @@ def create_device(data: DispositivoNuevo, db: Db, user: Admin):
     return {"id": row.id, "api_key": key}
 
 
+device_key = APIKeyHeader(name="X-Device-Key", scheme_name="deviceKey", auto_error=False)
+
+
 def authenticated_device(
-    dispositivo_id: str, db: Db, key: Annotated[str | None, Header(alias="X-Device-Key")] = None
+    dispositivo_id: str, db: Db, key: Annotated[str | None, Depends(device_key)] = None
 ):
     row = db.get(Dispositivo, dispositivo_id)
     digest = hashlib.sha256((key or "").encode()).hexdigest()

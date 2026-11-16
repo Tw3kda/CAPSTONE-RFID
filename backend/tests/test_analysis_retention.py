@@ -58,7 +58,8 @@ def test_retention_keeps_recent_records_open_loans_and_linked_events():
                 "devolucion_esperada_at,devolucion_at,estado,operacion_iniciada_at) VALUES "
                 "(1,3,2,'2023-01-01Z','2023-01-02Z','2023-01-02Z','devuelto','2023-01-01Z'),"
                 "(1,3,2,'2025-01-01Z','2025-01-02Z','2025-01-02Z','devuelto','2025-01-01Z'),"
-                "(2,3,2,'2023-01-01Z','2023-01-02Z',NULL,'activo','2023-01-01Z')"
+                "(2,3,2,'2023-01-01Z','2023-01-02Z',NULL,'activo','2023-01-01Z'),"
+                "(1,3,2,'2024-11-15Z','2024-11-16Z','2024-11-16Z','devuelto','2024-11-15Z')"
             )
         )
         db.execute(
@@ -71,24 +72,34 @@ def test_retention_keeps_recent_records_open_loans_and_linked_events():
                 "VALUES ('retention',NULL,'INICIO',1,1,'2025-01-01Z','2025-01-01Z'),"
                 "('retention',NULL,'INICIO',1,2,'2026-10-01Z','2026-10-01Z'),"
                 "('retention',3,'RETIRADO',1,3,'2023-01-01Z','2023-01-01Z'),"
-                "('retention',1,'RETIRADO',1,4,'2023-01-01Z','2023-01-01Z')"
+                "('retention',1,'RETIRADO',1,4,'2023-01-01Z','2023-01-01Z'),"
+                "('retention',1,'RETIRADO',1,5,'2026-11-15Z','2026-11-15Z'),"
+                "('retention',NULL,'INICIO',1,6,'2026-08-18Z','2026-08-18Z')"
             )
         )
         db.execute(
             text(
                 "INSERT INTO auditoria (accion,entidad,entidad_id,creado_at) VALUES "
-                "('crear','activo','1','2024-01-01Z'), ('crear','activo','2','2026-10-01Z')"
+                "('crear','activo','1','2024-01-01Z'), ('crear','activo','2','2026-10-01Z'),"
+                "('crear','activo','3','2025-11-16Z')"
             )
         )
     now = datetime(2026, 11, 16, tzinfo=UTC)
     preview = purge_expired(now=now, dry_run=True)
     assert preview == {"prestamos": 1, "eventos": 2, "auditoria": 1}
     with engine.connect() as db:
-        assert db.scalar(text("SELECT count(*) FROM prestamo")) == 3
+        assert db.scalar(text("SELECT count(*) FROM prestamo")) == 4
     assert purge_expired(now=now, dry_run=False) == preview
     with engine.connect() as db:
-        assert set(db.scalars(text("SELECT id FROM prestamo"))) == {2, 3}
-        assert set(db.scalars(text("SELECT secuencia FROM evento"))) == {2, 3}
+        assert set(db.scalars(text("SELECT id FROM prestamo"))) == {2, 3, 4}
+        assert set(db.scalars(text("SELECT secuencia FROM evento"))) == {2, 3, 5, 6}
+        assert db.scalar(text("SELECT prestamo_id FROM evento WHERE secuencia=5")) is None
         assert (
             db.scalar(text("SELECT count(*) FROM auditoria WHERE creado_at < '2025-11-16Z'")) == 0
         )
+
+
+def test_retention_calendar_months_preserve_leap_day_semantics():
+    from app.retention import months_before
+
+    assert months_before(datetime(2024, 2, 29, tzinfo=UTC), 12) == datetime(2023, 2, 28, tzinfo=UTC)

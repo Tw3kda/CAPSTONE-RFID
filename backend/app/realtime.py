@@ -1,9 +1,11 @@
 """Authenticated, commit-after notification hub for the single API process."""
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 
 import anyio
+import jwt
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,6 +55,21 @@ class Hub:
                         or role != "usuario"
                     ):
                         await peer.socket.send_json(message)
+                    elif (
+                        message["tipo"] == "prestamo_actualizado"
+                        and message["estado"] in ("activo", "devuelto")
+                        and not message["detalle"].get("error")
+                    ):
+                        # Other users invalidate inventory without receiving another user's loan.
+                        await peer.socket.send_json(
+                            {
+                                "tipo": "inventario_actualizado",
+                                "activo_id": message["activo_id"],
+                                "prestamo_id": None,
+                                "estado": None,
+                                "detalle": {},
+                            }
+                        )
             except (WebSocketDisconnect, OSError, RuntimeError):
                 self.subscribers.discard(peer)
 
@@ -108,6 +125,8 @@ async def state_socket(socket: WebSocket):
         if not token or socket.query_params:
             raise HTTPException(401, "Invalid session")
         user_id = decode_token(token)
+        # Claims are read only after decode_token has verified signature, issuer and expiry.
+        expires_at = float(jwt.decode(token, options={"verify_signature": False})["exp"])
 
         def validate_account():
             with Session(engine) as db:
@@ -121,8 +140,11 @@ async def state_socket(socket: WebSocket):
     peer = Subscriber(socket=socket, user_id=user_id)
     hub.subscribers.add(peer)
     try:
-        while True:
-            await socket.receive_text()
+        with anyio.move_on_after(max(0, expires_at - time.time())) as scope:
+            while True:
+                await socket.receive_text()
+        if scope.cancel_called:
+            await socket.close(code=1008)
     except WebSocketDisconnect:
         pass
     finally:

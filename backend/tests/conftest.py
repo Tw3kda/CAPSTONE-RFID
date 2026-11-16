@@ -9,8 +9,8 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-os.environ.setdefault("AUTH_SIGNING_KEY", "test-only-access-signing-key-at-least-32-characters")
-os.environ.setdefault("DATA_ENCRYPTION_KEY", Fernet.generate_key().decode())
+os.environ["AUTH_SIGNING_KEY"] = "test-only-access-signing-key-at-least-32-characters"
+os.environ["DATA_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 
 from app.database import engine  # noqa: E402
 from app.main import app  # noqa: E402

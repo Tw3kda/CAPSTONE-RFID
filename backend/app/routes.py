@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.models import Activo, Categoria, Evento, Gabinete, Lector, Posicion, Rol, Usuario
@@ -36,11 +36,31 @@ from app.security import (
     protect,
     session_tokens,
 )
-from app.services import asset_view, audit, get_or_404, location_view, save, user_view
+from app.services import (
+    asset_view,
+    audit,
+    get_or_404,
+    location_view,
+    save,
+    search_assets,
+    user_view,
+)
 
 auth = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 inventory = APIRouter(prefix="/api", tags=["Inventario"])
 administration = APIRouter(prefix="/api", tags=["Administración"])
+
+
+def set_session_cookie(response: Response, tokens: dict):
+    response.set_cookie(
+        "thesora_session",
+        tokens["access_token"],
+        max_age=get_settings().access_token_seconds,
+        httponly=True,
+        secure=get_settings().secure_cookies,
+        samesite="strict",
+        path="/api/ws",
+    )
 
 
 @auth.post("/login", response_model=Sesion)
@@ -54,15 +74,7 @@ def login(data: Login, db: Db, response: Response):
     if user is None:
         raise HTTPException(401, "Invalid credential")
     tokens = session_tokens(user)
-    response.set_cookie(
-        "thesora_session",
-        tokens["access_token"],
-        max_age=get_settings().access_token_seconds,
-        httponly=True,
-        secure=get_settings().secure_cookies,
-        samesite="strict",
-        path="/api/ws",
-    )
+    set_session_cookie(response, tokens)
     return {"tokens": tokens, "usuario": user_view(user)}
 
 
@@ -72,8 +84,10 @@ def me(user: User):
 
 
 @auth.post("/refresh", response_model=Tokens)
-def refresh(data: Refresh, db: Db):
-    return session_tokens(active_user(db, decode_token(data.refresh_token, "refresh")))
+def refresh(data: Refresh, db: Db, response: Response):
+    tokens = session_tokens(active_user(db, decode_token(data.refresh_token, "refresh")))
+    set_session_cookie(response, tokens)
+    return tokens
 
 
 @inventory.get("/categorias", response_model=list[CategoriaOut])
@@ -99,18 +113,7 @@ def assets(
     categoria_id: int | None = None,
     estado: AssetState | None = None,
 ):
-    query = select(Activo)
-    if q:
-        query = query.where(
-            or_(Activo.nombre.ilike(f"%{q}%"), ("ACT-" + cast(Activo.id, String)).ilike(f"%{q}%"))
-        )
-        if q.upper().startswith("ACT-") and q[4:].isdigit():
-            query = select(Activo).where(Activo.id == int(q[4:]))
-    if categoria_id is not None:
-        query = query.where(Activo.categoria_id == categoria_id)
-    if estado is not None:
-        query = query.where(Activo.estado == estado)
-    return [asset_view(a) for a in db.scalars(query.order_by(Activo.id))]
+    return search_assets(db, q, categoria_id, estado)
 
 
 @inventory.get("/activos/{id}", response_model=ActivoOut)

@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models import Usuario
 
 Db = Annotated[Session, Depends(get_db)]
-bearer = HTTPBearer(auto_error=False)
+bearer = HTTPBearer(auto_error=False, scheme_name="bearerAuth")
 
 
 def signing_key() -> str:

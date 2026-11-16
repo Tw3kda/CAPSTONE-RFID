@@ -83,6 +83,7 @@ def test_refresh_accepts_only_refresh_tokens_and_rechecks_current_account(client
     assert client.post("/api/auth/refresh", json={"refresh_token": token()}).status_code == 401
     response = client.post("/api/auth/refresh", json={"refresh_token": token(kind="refresh")})
     assert response.status_code == 200
+    assert "HttpOnly" in response.headers["set-cookie"]
     data = response.json()
     assert data["token_type"] == "bearer"
     assert data["expires_in"] > 0

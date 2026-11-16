@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi.openapi.utils import get_openapi
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,7 +23,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Thesora infrastructure",
+    title="Thesora API",
+    version="1.0.0",
     docs_url="/api/docs",
     redoc_url=None,
     openapi_url="/api/openapi.json",
@@ -58,3 +60,34 @@ app.include_router(devices)
 app.include_router(signals)
 app.include_router(realtime)
 app.include_router(analysis)
+
+
+def published_openapi():
+    if app.openapi_schema is None:
+        schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["cookieAuth"] = {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": "thesora_session",
+        }
+        schema["paths"]["/api/ws/estado"] = {
+            "get": {
+                "tags": ["Préstamos"],
+                "summary": "Cambios confirmados en vivo (WebSocket)",
+                "description": "Sesión por cookie HttpOnly o Authorization. "
+                "No admite tokens en URL. "
+                "JSON: {tipo, activo_id, prestamo_id, estado, detalle}. "
+                "Préstamos visibles solo para su responsable y roles autorizados.",
+                "security": [{"bearerAuth": []}, {"cookieAuth": []}],
+                "responses": {
+                    "101": {"description": "Switching Protocols"},
+                    "401": {"description": "Sesión inválida"},
+                },
+                "x-websocket": True,
+            }
+        }
+        app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = published_openapi

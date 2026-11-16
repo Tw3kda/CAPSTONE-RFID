@@ -1,7 +1,8 @@
-name: thesora
+name: ${APP_NAME:?Set APP_NAME in the root .env}
 
 services:
   db:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-db
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -19,12 +20,17 @@ services:
       start_period: 10s
 
   migrate:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-migrate
     build: ./backend
     environment: &database
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the root .env}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the root .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
       POSTGRES_HOST: db
+      AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY:?Generate AUTH_SIGNING_KEY in the root .env}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Generate DATA_ENCRYPTION_KEY in the root .env}
+      SECURE_COOKIES: "true"
+      RETENTION_HOLD: ${RETENTION_HOLD:-false}
     networks: [data]
     depends_on:
       db:
@@ -32,6 +38,7 @@ services:
     command: [alembic, upgrade, head]
 
   backend:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-backend
     build: ./backend
     restart: unless-stopped
     environment: *database
@@ -47,6 +54,7 @@ services:
       start_period: 10s
 
   frontend:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-frontend
     build:
       context: ./frontend
       args:

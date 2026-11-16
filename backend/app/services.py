@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Activo, Auditoria, Posicion, Prestamo, Usuario
+from app.models import Activo, Auditoria, Categoria, Espacio, Gabinete, Posicion, Prestamo, Usuario
 
 
 def get_or_404(db: Session, model, identity):
@@ -64,6 +65,71 @@ def asset_view(asset: Activo) -> dict:
         "ultima_revision_at": asset.ultima_revision_at,
         "ubicacion": location_view(asset.posicion),
     }
+
+
+def search_assets(db: Session, q=None, category_id=None, state=None):
+    # A catalog response needs scalar fields, not a fully materialized ORM relationship graph.
+    query = (
+        select(
+            Activo.id,
+            Activo.nombre,
+            Activo.estado,
+            Activo.condicion,
+            Activo.ultima_revision_at,
+            Categoria.nombre.label("categoria"),
+            Posicion.id.label("posicion_id"),
+            Espacio.nombre.label("espacio"),
+            Gabinete.nombre.label("gabinete"),
+            Posicion.estante,
+            Posicion.codigo,
+        )
+        .join(Categoria, Activo.categoria_id == Categoria.id)
+        .join(
+            Posicion,
+            Activo.posicion_asignada_id == Posicion.id,
+        )
+        .join(Gabinete, Posicion.gabinete_id == Gabinete.id)
+        .join(
+            Espacio,
+            Gabinete.espacio_id == Espacio.id,
+        )
+    )
+    if q:
+        if q.upper().startswith("ACT-") and q[4:].isdigit():
+            query = query.where(Activo.id == int(q[4:]))
+        else:
+            query = query.where(
+                or_(
+                    Activo.nombre.ilike(f"%{q}%"),
+                    ("ACT-" + cast(Activo.id, String)).ilike(f"%{q}%"),
+                )
+            )
+    if category_id is not None:
+        query = query.where(Activo.categoria_id == category_id)
+    if state is not None:
+        query = query.where(Activo.estado == state)
+    return [
+        {
+            "id": row.id,
+            "nombre": row.nombre,
+            "estado": row.estado,
+            "condicion": row.condicion,
+            "ultima_revision_at": row.ultima_revision_at,
+            "codigo": f"ACT-{row.id:03}",
+            "categoria": row.categoria,
+            "ubicacion": {
+                key: getattr(row, key)
+                for key in (
+                    "posicion_id",
+                    "espacio",
+                    "gabinete",
+                    "estante",
+                    "codigo",
+                )
+            },
+        }
+        for row in db.execute(query.order_by(Activo.id))
+    ]
 
 
 def loan_view(loan: Prestamo) -> dict:

@@ -103,10 +103,12 @@ def create_loan(data: PrestamoNuevo, db: Db, user: User):
         entregado_por_id=user.id,
         estado="pendiente_retiro",
         operacion_iniciada_at=datetime.now(UTC),
+        activo=asset,
+        responsable=responsible,
+        entregado_por=user,
     )
     db.add(row)
     save(db)
-    db.refresh(row)
     notify_loan(row)
     return loan_view(row)
 
