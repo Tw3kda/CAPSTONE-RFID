@@ -265,10 +265,12 @@ def process_observation(db, device, boot, observation, reader, received_at):
     if loan and occurred_at < loan.operacion_iniciada_at:
         return []
     notifications = []
+    withdrawal_confirmed = False
     if loan and observation.tipo == "RETIRADO" and correct_position:
         if loan.estado == "pendiente_retiro":
             loan.estado, loan.retiro_at = "activo", occurred_at
             asset.estado = "prestado"
+            withdrawal_confirmed = True
             notifications.append((loan, {}))
     elif loan and observation.tipo == "DEVUELTO":
         if loan.estado in ("validando_devolucion", "esperando_posicion"):
@@ -286,13 +288,22 @@ def process_observation(db, device, boot, observation, reader, received_at):
                     },
                 )
             )
-    if observation.tipo == "DEVUELTO" and reader:
-        # A wrong UID at the expected return position leaves the operation open.
+    if reader and (
+        observation.tipo == "DEVUELTO"
+        or (observation.tipo == "RETIRADO" and not withdrawal_confirmed)
+    ):
+        # A shared reader can serve several assets. A valid withdrawal belongs only
+        # to its matching loan; an unexpected UID leaves other operations pending.
+        waiting_states = (
+            ("pendiente_retiro",)
+            if observation.tipo == "RETIRADO"
+            else ("validando_devolucion", "esperando_posicion")
+        )
         waiting = db.scalars(
             select(Prestamo)
             .join(Activo)
             .where(
-                Prestamo.estado.in_(("validando_devolucion", "esperando_posicion")),
+                Prestamo.estado.in_(waiting_states),
                 Activo.posicion_asignada_id == reader.posicion_id,
                 Prestamo.activo_id != (asset.id if asset else -1),
                 Prestamo.operacion_iniciada_at <= occurred_at,

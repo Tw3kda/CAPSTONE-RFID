@@ -100,6 +100,59 @@ def test_websocket_cookie_session_and_revocation_follow_current_account(client, 
             ws.receive_json()
 
 
+@pytest.mark.parametrize("wrong_uid", ["11223344", "DEADBEEF"])
+def test_wrong_withdrawal_notifies_only_responsible_and_staff_without_confirming(
+    client, headers, manager, admin, device, wrong_uid
+):
+    lid = prepare(client, headers).json()["id"]
+    outsider = {"Authorization": f"Bearer {token(4)}"}
+    with (
+        client.websocket_connect("/api/ws/estado", headers=headers) as owner,
+        client.websocket_connect("/api/ws/estado", headers=manager) as staff,
+        client.websocket_connect("/api/ws/estado", headers=outsider) as other,
+    ):
+        assert event(client, device, "RETIRADO", 1, uid=wrong_uid).status_code == 202
+        # A public marker makes absence of a private notification deterministic.
+        client.post("/api/categorias", headers=admin, json={"nombre": "Withdrawal marker"})
+        for socket in (owner, staff):
+            message = socket.receive_json()
+            assert message["prestamo_id"] == lid
+            assert message["estado"] == "pendiente_retiro"
+            assert message["detalle"] == {"error": "rfid_incorrecto"}
+            assert socket.receive_json()["tipo"] == "inventario_actualizado"
+        assert other.receive_json()["tipo"] == "inventario_actualizado"
+        assert client.get(f"/api/prestamos/{lid}", headers=headers).json()["retiro_at"] is None
+        with engine.connect() as db:
+            observation = db.execute(text("SELECT uid_leido,validacion FROM evento")).one()
+            assert observation.uid_leido == wrong_uid
+            assert observation.validacion == (
+                "desconocido" if wrong_uid == "DEADBEEF" else "correcto"
+            )
+        assert event(client, device, "RETIRADO", 1, uid=wrong_uid).json()["duplicados"] == 1
+        # Correct retry confirms exactly the expected asset; no duplicate error is emitted.
+        event(client, device, "RETIRADO", 2)
+        for socket in (owner, staff):
+            assert socket.receive_json()["estado"] == "activo"
+        assert other.receive_json()["tipo"] == "inventario_actualizado"
+
+
+def test_shared_reader_does_not_report_other_valid_withdrawal_as_wrong_resource(
+    client, headers, manager, admin, device
+):
+    first = prepare(client, headers).json()["id"]
+    second = prepare(client, manager, asset=2, responsible=4).json()["id"]
+    with client.websocket_connect("/api/ws/estado", headers=headers) as owner:
+        event(client, device, "RETIRADO", 1, uid="11223344")
+        assert owner.receive_json()["tipo"] == "inventario_actualizado"
+        client.post("/api/categorias", headers=admin, json={"nombre": "Shared reader marker"})
+        assert owner.receive_json()["tipo"] == "inventario_actualizado"
+    assert (
+        client.get(f"/api/prestamos/{first}", headers=headers).json()["estado"]
+        == "pendiente_retiro"
+    )
+    assert client.get(f"/api/prestamos/{second}", headers=manager).json()["estado"] == "activo"
+
+
 def test_admin_nonphysical_asset_edit_preserves_confirmed_loan_state(
     client, headers, admin, device
 ):
