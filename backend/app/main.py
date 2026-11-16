@@ -5,6 +5,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.analysis import analysis
 from app.database import engine
 from app.devices import devices, provisioning, signals
 from app.loans import loans
@@ -56,3 +57,4 @@ app.include_router(provisioning)
 app.include_router(devices)
 app.include_router(signals)
 app.include_router(realtime)
+app.include_router(analysis)

@@ -41,3 +41,10 @@
 - **RF-25.** La aplicación debe mostrar disponibilidad, uso por período y recursos con baja utilización.
 - **RF-26.** La aplicación debe permitir generar, ocultar y volver a mostrar una recomendación sobre reutilización o mantenimiento basada en los datos existentes.
 - **RF-27.** Desde la recomendación, el usuario debe poder consultar las fichas de los recursos sugeridos.
+
+El análisis usa una ventana móvil de 90 días en UTC. La baja utilización se refiere a activos
+disponibles sin retiros físicos confirmados en ese período; no se cuentan preparaciones ni
+operaciones canceladas sin retiro. El uso semanal agrupa retiros confirmados por lunes e incluye
+semanas sin movimientos. Las recomendaciones son descriptivas y marcan datos insuficientes
+si no existe evidencia de seguimiento de 90 días para todos los activos sugeridos. Ocultar y
+volver a mostrar la recomendación es una interacción de presentación, sin borrar historial.

@@ -314,6 +314,7 @@ paths:
     get:
       tags: [Análisis]
       summary: Resumen de uso por período, disponibilidad y recursos subutilizados
+      description: Ventana móvil de 90 días en UTC. Uso semanal cuenta retiros físicos confirmados (retiro_at), agrupados por lunes; incluye semanas sin movimientos. Baja utilización identifica activos disponibles sin retiros en esa ventana, sin contar preparaciones/cancelaciones.
       responses:
         '200':
           description: Indicadores
@@ -324,6 +325,7 @@ paths:
     get:
       tags: [Análisis]
       summary: Activos que conviene revisar antes de adquirir otros
+      description: Activos disponibles sin retiro físico confirmado en los últimos 90 días. La ausencia de historial no demuestra desuso.
       responses:
         '200':
           description: Activos de baja utilización
@@ -336,7 +338,7 @@ paths:
     post:
       tags: [Análisis]
       summary: Obtener recomendación contextual de reutilización y mantenimiento
-      description: No debe presentar conclusiones predictivas si no existe historial suficiente.
+      description: Recomendación descriptiva de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). datos_insuficientes indica que no hay evidencia de seguimiento de al menos 90 días para todos los activos sugeridos; no presenta predicciones. Ocultar/mostrar es estado de presentación del cliente y no elimina datos del servidor.
       responses:
         '200':
           description: Recomendación

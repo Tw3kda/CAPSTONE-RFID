@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     access_token_seconds: int = 900
     refresh_token_seconds: int = 604800
     secure_cookies: bool = True
+    retention_hold: bool = False
     websocket_origins: list[str] = [
         "https://thesora.redskycol.com",
         "http://127.0.0.1:5173",
