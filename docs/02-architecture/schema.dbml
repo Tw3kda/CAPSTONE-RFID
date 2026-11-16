@@ -12,7 +12,7 @@ Table usuario {
   rol_id bigint [not null, ref: > rol.id]
   nombre varchar(150) [not null]
   correo text [note: 'Protegido mediante cifrado']
-  credencial_uid text [note: 'Protegida; permite identificación institucional']
+  credencial_uid text [unique, note: 'HMAC de credencial registrada localmente; QR e ID son identificadores de confianza, no prueba contra suplantación']
   consentimiento_at timestamptz
   activo boolean [not null, default: true]
 }
@@ -22,7 +22,7 @@ Table auditoria {
   usuario_id bigint [ref: > usuario.id]
   accion varchar(80) [not null]
   entidad varchar(50) [not null]
-  entidad_id bigint [not null]
+  entidad_id varchar(64) [not null, note: 'Admite IDs numéricos y IDs de dispositivos']
   creado_at timestamptz [not null]
 }
 
@@ -74,6 +74,9 @@ Table prestamo {
   devolucion_at timestamptz
   estado varchar(30) [not null, note: 'pendiente_retiro | activo | validando_devolucion | esperando_posicion | devuelto | cancelado']
 }
+
+// PostgreSQL: índice único parcial uq_prestamo_abierto_activo sobre activo_id
+// donde estado NOT IN ('devuelto','cancelado'); un activo no admite dos préstamos abiertos.
 
 // Un ESP32 admite varios lectores MFRC522 (canales físicos).
 Table dispositivo {

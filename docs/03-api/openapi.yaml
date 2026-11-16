@@ -61,7 +61,7 @@ paths:
     post:
       tags: [Autenticación]
       summary: Identificar usuario por credencial QR o ID institucional
-      description: El identificador debe verificarse con el mecanismo institucional antes de emitir tokens; el ID por sí solo no es prueba de identidad.
+      description: Se confía en el QR o identificador registrado por el administrador y se exige una cuenta activa. No hay contraseña, segundo factor ni verificación Microsoft. Una copia de la credencial permite identificarse como su titular (limitación de alcance aceptada). Ambos métodos comparan el identificador con el mismo registro local protegido.
       security: []
       requestBody:
         required: true
@@ -73,7 +73,6 @@ paths:
               properties:
                 metodo: {type: string, enum: [qr, id]}
                 credencial: {type: string}
-                comprobante: {type: string, description: Prueba emitida por el mecanismo institucional de identificación.}
       responses:
         '200':
           description: Sesión iniciada

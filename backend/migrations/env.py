@@ -4,12 +4,12 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.config import get_settings
+from app.models import Base
 
 if context.config.config_file_name:
     fileConfig(context.config.config_file_name)
 
-# No business models exist yet. Add their metadata when implementing the schema.
-target_metadata = None
+target_metadata = Base.metadata
 database_url = get_settings().database_url
 
 if context.is_offline_mode():

@@ -1,11 +1,12 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine
+from app.routes import administration, auth, inventory
 
 logger = logging.getLogger(__name__)
 
@@ -44,3 +45,6 @@ def readiness() -> dict[str, str]:
 
 
 app.include_router(health)
+app.include_router(auth)
+app.include_router(inventory)
+app.include_router(administration)

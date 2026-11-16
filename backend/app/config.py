@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
     postgres_host: str = "db"
     postgres_port: int = 5432
+    auth_signing_key: SecretStr | None = None
+    data_encryption_key: SecretStr | None = None
+    access_token_seconds: int = 900
+    refresh_token_seconds: int = 604800
+    secure_cookies: bool = True
 
     @property
     def database_url(self) -> URL:
