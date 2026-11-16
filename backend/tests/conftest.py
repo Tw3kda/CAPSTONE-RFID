@@ -96,3 +96,19 @@ def admin():
 @pytest.fixture
 def manager():
     return {"Authorization": f"Bearer {token(2)}"}
+
+
+@pytest.fixture
+def device(client, admin):
+    response = client.post("/api/dispositivos", headers=admin, json={"id": "esp-test"})
+    assert response.status_code == 201
+    key = response.json()["api_key"]
+    assert len(key) >= 32
+    for channel, position in ((1, 1), (2, 2), (3, 3)):
+        registered = client.post(
+            "/api/lectores",
+            headers=admin,
+            json={"dispositivo_id": "esp-test", "canal": channel, "posicion_id": position},
+        )
+        assert registered.status_code == 201
+    return {"X-Device-Key": key}

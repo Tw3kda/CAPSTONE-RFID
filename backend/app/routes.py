@@ -3,6 +3,7 @@ from sqlalchemy import String, cast, or_, select
 
 from app.config import get_settings
 from app.models import Activo, Categoria, Evento, Gabinete, Lector, Posicion, Rol, Usuario
+from app.realtime import notify_inventory
 from app.schemas import (
     ActivoEdicion,
     ActivoOut,
@@ -86,6 +87,7 @@ def create_category(data: Nombre, db: Db, user: Admin):
     db.add(row)
     audit(db, user, "crear_categoria", row)
     save(db)
+    notify_inventory()
     return row
 
 
@@ -133,17 +135,37 @@ def create_asset(data: ActivoEdicion, db: Db, user: Admin):
     audit(db, user, "crear_activo", row)
     save(db)
     db.refresh(row)
+    notify_inventory(row.id)
     return asset_view(row)
 
 
 @administration.patch("/activos/{id}", response_model=ActivoOut)
 def edit_asset(id: int, data: ActivoEdicion, db: Db, user: Admin):
-    row = get_or_404(db, Activo, id)
-    for key, value in asset_data(data, db).items():
+    from app.loans import locked_asset
+    from app.models import OPEN_LOAN_STATES, Prestamo
+
+    row = locked_asset(db, id)
+    open_loan = db.scalar(
+        select(Prestamo.id).where(
+            Prestamo.activo_id == id,
+            Prestamo.estado.in_(OPEN_LOAN_STATES),
+        )
+    )
+    if open_loan is not None and (
+        data.posicion_asignada_id != row.posicion_asignada_id
+        or data.rfid_uid.upper() != row.rfid_uid
+        or (data.estado is not None and data.estado != row.estado)
+    ):
+        raise HTTPException(409, "Cannot change physical identity or state during an open loan")
+    values = asset_data(data, db)
+    if data.estado is None:
+        values.pop("estado", None)
+    for key, value in values.items():
         setattr(row, key, value)
     audit(db, user, "editar_activo", row)
     save(db)
     db.refresh(row)
+    notify_inventory(row.id)
     return asset_view(row)
 
 

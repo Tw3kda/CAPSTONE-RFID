@@ -462,6 +462,75 @@ paths:
         '200': {description: Posición actualizada; el ESP32 obtendrá el nuevo mapeo}
         '403': {$ref: '#/components/responses/Prohibido'}
 
+  /espacios:
+    post:
+      tags: [Administración]
+      summary: Crear espacio físico (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre]
+              properties:
+                nombre: {type: string, minLength: 1, maxLength: 120}
+      responses:
+        '201':
+          description: Espacio creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Espacio'}
+        '403': {$ref: '#/components/responses/Prohibido'}
+  /gabinetes:
+    post:
+      tags: [Administración]
+      summary: Crear gabinete dentro de un espacio (Administrador)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, espacio_id]
+              properties:
+                nombre: {type: string, minLength: 1, maxLength: 120}
+                espacio_id: {type: integer, minimum: 1}
+      responses:
+        '201':
+          description: Gabinete creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Gabinete'}
+        '403': {$ref: '#/components/responses/Prohibido'}
+        '404': {$ref: '#/components/responses/NoEncontrado'}
+  /dispositivos:
+    post:
+      tags: [Administración]
+      summary: Registrar ESP32 y emitir credencial propia (Administrador)
+      description: La clave aleatoria se entrega solo en esta respuesta; se almacena su hash SHA-256. No existe credencial compartida entre dispositivos.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$'}
+      responses:
+        '201':
+          description: Dispositivo registrado; guardar clave en el ESP32
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, api_key]
+                properties:
+                  id: {type: string}
+                  api_key: {type: string}
+        '403': {$ref: '#/components/responses/Prohibido'}
+        '409': {$ref: '#/components/responses/Conflicto'}
   /dispositivos/{dispositivo_id}/configuracion:
     get:
       tags: [Dispositivos]
@@ -611,6 +680,19 @@ components:
       properties:
         id: {type: integer}
         nombre: {type: string}
+    Espacio:
+      type: object
+      required: [id, nombre]
+      properties:
+        id: {type: integer}
+        nombre: {type: string}
+    Gabinete:
+      allOf:
+        - {$ref: '#/components/schemas/Espacio'}
+        - type: object
+          required: [espacio_id]
+          properties:
+            espacio_id: {type: integer}
     Usuario:
       type: object
       required: [id, nombre, rol, activo]
@@ -659,7 +741,7 @@ components:
         codigo: {type: string, description: 'Código público calculado del ID, por ejemplo ACT-004'}
         categoria: {type: string}
         estado: {type: string, enum: [disponible, prestado, en_revision]}
-        condicion: {type: string, description: Descripción de la condición física}
+        condicion: {type: [string, 'null'], description: Descripción de la condición física}
         ultima_revision_at: {type: [string, 'null'], format: date-time}
         ubicacion: {$ref: '#/components/schemas/Ubicacion'}
     ActivoEdicion:

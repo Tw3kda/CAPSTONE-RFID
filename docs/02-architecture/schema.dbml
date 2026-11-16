@@ -72,6 +72,7 @@ Table prestamo {
   retiro_at timestamptz
   devolucion_esperada_at timestamptz [not null]
   devolucion_at timestamptz
+  operacion_iniciada_at timestamptz [not null, note: 'Rechaza confirmaciones físicas anteriores a la preparación/inicio de devolución; se renueva al cancelar una operación']
   estado varchar(30) [not null, note: 'pendiente_retiro | activo | validando_devolucion | esperando_posicion | devuelto | cancelado']
 }
 

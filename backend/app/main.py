@@ -6,6 +6,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import engine
+from app.devices import devices, provisioning, signals
+from app.loans import loans
+from app.realtime import realtime
 from app.routes import administration, auth, inventory
 
 logger = logging.getLogger(__name__)
@@ -48,3 +51,8 @@ app.include_router(health)
 app.include_router(auth)
 app.include_router(inventory)
 app.include_router(administration)
+app.include_router(loans)
+app.include_router(provisioning)
+app.include_router(devices)
+app.include_router(signals)
+app.include_router(realtime)

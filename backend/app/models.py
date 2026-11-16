@@ -128,6 +128,7 @@ class Prestamo(Base):
     retiro_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     devolucion_esperada_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     devolucion_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    operacion_iniciada_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     estado: Mapped[str] = mapped_column(String(30))
     activo: Mapped[Activo] = relationship(lazy="joined")
     responsable: Mapped[Usuario] = relationship(foreign_keys=[responsable_id], lazy="joined")
