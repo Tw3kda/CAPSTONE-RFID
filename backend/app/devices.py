@@ -43,6 +43,13 @@ class ProvisionedDevice(BaseModel):
     api_key: str
 
 
+class DispositivoOut(BaseModel):
+    id: str
+    firmware: str | None
+    ultimo_heartbeat: datetime | None
+    ultimo_rssi: int | None
+
+
 class EntityOut(BaseModel):
     id: int
     nombre: str
@@ -99,6 +106,21 @@ class BatchResult(BaseModel):
 provisioning = APIRouter(prefix="/api", tags=["Administración"])
 devices = APIRouter(prefix="/api/dispositivos", tags=["Dispositivos"])
 signals = APIRouter(prefix="/api/activos", tags=["Inventario"])
+
+
+@provisioning.get("/espacios", response_model=list[EntityOut])
+def list_spaces(db: Db, user: Admin):
+    return db.scalars(select(Espacio).order_by(Espacio.id)).all()
+
+
+@provisioning.get("/gabinetes", response_model=list[GabineteOut])
+def list_cabinets(db: Db, user: Admin):
+    return db.scalars(select(Gabinete).order_by(Gabinete.id)).all()
+
+
+@provisioning.get("/dispositivos", response_model=list[DispositivoOut])
+def list_devices(db: Db, user: Admin):
+    return db.scalars(select(Dispositivo).order_by(Dispositivo.id)).all()
 
 
 @provisioning.post("/espacios", status_code=201, response_model=EntityOut)

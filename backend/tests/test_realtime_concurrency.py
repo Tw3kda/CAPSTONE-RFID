@@ -80,6 +80,7 @@ def test_websocket_cookie_session_and_revocation_follow_current_account(client, 
             "nombre": "Socket",
             "rol": "usuario",
             "credencial": "SYNTHETIC-WS-42",
+            "identificador_institucional": "SYNTHETIC-WS-ID-42",
         },
     )
     login = client.post("/api/auth/login", json={"metodo": "qr", "credencial": "SYNTHETIC-WS-42"})

@@ -12,17 +12,22 @@ def test_first_admin_bootstrap_is_local_explicit_and_refuses_existing_administra
         bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42")
     with engine.begin() as db:
         db.execute(text("DELETE FROM usuario"))
+    with pytest.raises(ValueError):
+        bootstrap_admin("Initial Admin", "")
     user_id = bootstrap_admin("Initial Admin", "SYNTHETIC-BOOTSTRAP-42")
     with engine.connect() as db:
         row = db.execute(
             text(
-                "SELECT u.nombre,r.nombre AS rol,u.credencial_uid FROM usuario u "
+                "SELECT u.nombre,r.nombre AS rol,u.credencial_uid,"
+                "u.identificador_institucional_hash FROM usuario u "
                 "JOIN rol r ON r.id=u.rol_id WHERE u.id=:id"
             ),
             {"id": user_id},
         ).one()
         assert row.nombre == "Initial Admin" and row.rol == "administrador"
-        assert row.credencial_uid and "SYNTHETIC-BOOTSTRAP-42" not in row.credencial_uid
+        assert row.credencial_uid is None
+        assert row.identificador_institucional_hash
+        assert "SYNTHETIC-BOOTSTRAP-42" not in row.identificador_institucional_hash
         assert (
             db.scalar(text("SELECT count(*) FROM auditoria WHERE accion='bootstrap_administrador'"))
             == 1

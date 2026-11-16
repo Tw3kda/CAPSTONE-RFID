@@ -61,7 +61,7 @@ paths:
     post:
       tags: [Autenticación]
       summary: Identificar usuario por credencial QR o ID institucional
-      description: Se confía en el QR o identificador registrado por el administrador y se exige una cuenta activa. No hay contraseña, segundo factor ni verificación Microsoft. Una copia de la credencial permite identificarse como su titular (limitación de alcance aceptada). Ambos métodos comparan el identificador con el mismo registro local protegido.
+      description: Se confía en el QR o ID institucional registrado por el administrador y se exige una cuenta activa. Toda nueva cuenta requiere ID institucional; el QR es opcional y se recomienda registrar ambos. No hay contraseña, segundo factor ni verificación Microsoft. Una copia del identificador permite identificarse como su titular (limitación aceptada). metodo=qr compara el QR registrado; metodo=id compara el ID institucional independiente, nunca derivado del QR. Sin el identificador del método elegido devuelve 401, sin sustitución entre métodos.
       security: []
       requestBody:
         required: true
@@ -183,11 +183,12 @@ paths:
     patch:
       tags: [Administración]
       summary: Editar activo (Administrador)
+      description: Actualización parcial; los campos omitidos se conservan. No requiere reenviar el RFID y este no se expone en las lecturas del inventario. Para cambiarlo se proporciona el nuevo UID. No se puede alterar identidad física, posición ni estado durante un préstamo abierto. condicion y ultima_revision_at admiten null para borrar; los demás campos no admiten null.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/ActivoEdicion'}
+            schema: {$ref: '#/components/schemas/ActivoParcial'}
       responses:
         '200':
           description: Activo actualizado
@@ -350,6 +351,7 @@ paths:
     get:
       tags: [Administración]
       summary: Buscar personas para préstamo delegado (Encargado o Administrador)
+      description: Busca parcialmente por nombre o por coincidencia exacta del QR o ID institucional registrado (HMAC). No devuelve esos identificadores ni permite búsqueda parcial de ellos. El id numérico de la respuesta es interno, no el ID institucional.
       parameters:
         - {name: q, in: query, schema: {type: string}}
       responses:
@@ -370,12 +372,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [nombre, rol]
+              required: [nombre, rol, identificador_institucional]
               properties:
                 nombre: {type: string}
                 correo: {type: string, format: email}
                 rol: {$ref: '#/components/schemas/Rol'}
-                credencial: {type: string}
+                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: QR opcional del carné, independiente del ID institucional; nunca se devuelve.}
+                identificador_institucional: {type: string, minLength: 1, maxLength: 256, description: ID institucional obligatorio conocido y registrado por el administrador, independiente del QR; se guarda solo su HMAC y no se devuelve.}
       responses:
         '201': {description: Usuario creado}
         '403': {$ref: '#/components/responses/Prohibido'}
@@ -395,6 +398,8 @@ paths:
                 nombre: {type: string}
                 rol: {$ref: '#/components/schemas/Rol'}
                 activo: {type: boolean}
+                identificador_institucional: {type: string, minLength: 1, maxLength: 256, description: Omitir conserva el ID; un valor válido lo reemplaza; null o vacío son rechazados. Nunca se devuelve el valor registrado.}
+                credencial: {type: [string, 'null'], minLength: 1, maxLength: 256, description: Omitir conserva el QR; un valor lo registra o reemplaza; null retira el carné. Vacío se rechaza. Nunca se devuelve el QR registrado.}
       responses:
         '200': {description: Usuario actualizado}
         '403': {$ref: '#/components/responses/Prohibido'}
@@ -428,6 +433,19 @@ paths:
         '201': {description: Posición creada}
         '403': {$ref: '#/components/responses/Prohibido'}
   /lectores:
+    get:
+      tags: [Administración]
+      summary: Listar lectores registrados (Administrador)
+      responses:
+        '200':
+          description: Lectores y posiciones asignadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Lector'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
     post:
       tags: [Administración]
       summary: Registrar lector de un ESP32 en una posición (Administrador)
@@ -465,6 +483,19 @@ paths:
         '403': {$ref: '#/components/responses/Prohibido'}
 
   /espacios:
+    get:
+      tags: [Administración]
+      summary: Listar espacios físicos (Administrador)
+      responses:
+        '200':
+          description: Espacios registrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Espacio'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
     post:
       tags: [Administración]
       summary: Crear espacio físico (Administrador)
@@ -485,6 +516,19 @@ paths:
               schema: {$ref: '#/components/schemas/Espacio'}
         '403': {$ref: '#/components/responses/Prohibido'}
   /gabinetes:
+    get:
+      tags: [Administración]
+      summary: Listar gabinetes y su espacio (Administrador)
+      responses:
+        '200':
+          description: Gabinetes registrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Gabinete'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
     post:
       tags: [Administración]
       summary: Crear gabinete dentro de un espacio (Administrador)
@@ -507,6 +551,20 @@ paths:
         '403': {$ref: '#/components/responses/Prohibido'}
         '404': {$ref: '#/components/responses/NoEncontrado'}
   /dispositivos:
+    get:
+      tags: [Administración]
+      summary: Listar dispositivos y último heartbeat (Administrador)
+      description: No devuelve claves ni hashes de autenticación. No infiere un estado conectado/desconectado sin un umbral documentado.
+      responses:
+        '200':
+          description: Dispositivos registrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Dispositivo'}
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
     post:
       tags: [Administración]
       summary: Registrar ESP32 y emitir credencial propia (Administrador)
@@ -736,12 +794,13 @@ components:
           items: {$ref: '#/components/schemas/Ubicacion'}
     Activo:
       type: object
-      required: [id, nombre, codigo, categoria, estado, ubicacion]
+      required: [id, nombre, codigo, categoria, categoria_id, estado, ubicacion]
       properties:
         id: {type: integer}
         nombre: {type: string}
         codigo: {type: string, description: 'Código público calculado del ID, por ejemplo ACT-004'}
         categoria: {type: string}
+        categoria_id: {type: integer, description: Referencia para edición administrativa; el UID RFID no se expone en esta respuesta.}
         estado: {type: string, enum: [disponible, prestado, en_revision]}
         condicion: {type: [string, 'null'], description: Descripción de la condición física}
         ultima_revision_at: {type: [string, 'null'], format: date-time}
@@ -757,6 +816,35 @@ components:
         estado: {type: string, enum: [disponible, prestado, en_revision]}
         condicion: {type: string}
         ultima_revision_at: {type: [string, 'null'], format: date-time}
+    ActivoParcial:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 150}
+        categoria_id: {type: integer, minimum: 1}
+        posicion_asignada_id: {type: integer, minimum: 1}
+        rfid_uid: {type: string, pattern: '^[0-9A-Fa-f]{8,20}$'}
+        estado: {type: string, enum: [disponible, prestado, en_revision]}
+        condicion: {type: [string, 'null'], maxLength: 100}
+        ultima_revision_at: {type: [string, 'null'], format: date-time}
+    Lector:
+      type: object
+      required: [id, dispositivo_id, canal, posicion_id]
+      properties:
+        id: {type: integer}
+        dispositivo_id: {type: string}
+        canal: {type: integer, minimum: 1}
+        posicion_id: {type: integer}
+    Dispositivo:
+      type: object
+      additionalProperties: false
+      required: [id, firmware, ultimo_heartbeat, ultimo_rssi]
+      properties:
+        id: {type: string}
+        firmware: {type: [string, 'null']}
+        ultimo_heartbeat: {type: [string, 'null'], format: date-time}
+        ultimo_rssi: {type: [integer, 'null']}
     Prestamo:
       type: object
       required: [id, activo_id, responsable_id, entregado_por_id, devolucion_esperada_at, estado]

@@ -8,15 +8,23 @@ from tests.conftest import token
 
 
 def test_login_trusts_only_registered_active_credential_and_never_client_roles(client, admin):
-    payload = {"nombre": "Eva", "rol": "usuario", "credencial": "SYNTHETIC-CREDENTIAL-42"}
+    payload = {
+        "nombre": "Eva",
+        "rol": "usuario",
+        "credencial": "SYNTHETIC-CREDENTIAL-42",
+        "identificador_institucional": "SYNTHETIC-INSTITUTIONAL-42",
+    }
     registered = client.post("/api/usuarios", headers=admin, json=payload)
     assert registered.status_code == 201
-    for method in ("qr", "id"):
+    for method, credential in (
+        ("qr", "SYNTHETIC-CREDENTIAL-42"),
+        ("id", "SYNTHETIC-INSTITUTIONAL-42"),
+    ):
         logged = client.post(
             "/api/auth/login",
             json={
                 "metodo": method,
-                "credencial": "SYNTHETIC-CREDENTIAL-42",
+                "credencial": credential,
             },
         )
         assert logged.status_code == 200
@@ -196,6 +204,7 @@ def test_admin_can_edit_asset_and_manage_account_roles_with_encrypted_personal_d
             "rol": "usuario",
             "correo": "eva@example.test",
             "credencial": "INST-EVA",
+            "identificador_institucional": "SYNTHETIC-EVA-ID",
         },
     )
     assert created.status_code == 201

@@ -2,7 +2,7 @@
 
 ## Acceso y usuarios
 
-- **RF-01.** El sistema debe permitir identificar a un usuario mediante QR de credencial o identificador institucional, previa validación de la credencial.
+- **RF-01.** El sistema debe permitir identificar a un usuario mediante QR de credencial o identificador institucional, previa validación contra el registro autorizado. Cada nueva cuenta debe registrar como mínimo su ID institucional; el QR del carné es opcional y se recomienda registrar ambos. Son identificadores independientes registrados por el administrador; no se deriva el ID del QR ni se sustituye uno por otro al autenticar.
 - **RF-02.** El backend debe aplicar los roles Usuario, Encargado y Administrador a las operaciones protegidas.
 - **RF-03.** El administrador debe poder gestionar usuarios y sus roles.
 

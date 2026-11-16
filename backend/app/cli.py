@@ -14,10 +14,17 @@ from app.retention import purge_expired
 from app.security import credential_digest
 
 
-def bootstrap_admin(name: str, credential: str) -> int:
-    name, credential = name.strip(), credential.strip()
-    if not name or len(name) > 150 or not credential or len(credential) > 256:
-        raise ValueError("A valid name and registered credential are required")
+def bootstrap_admin(name: str, institutional_identifier: str, credential: str | None = None) -> int:
+    name, institutional_identifier = name.strip(), institutional_identifier.strip()
+    credential = credential.strip() or None if credential is not None else None
+    if (
+        not name
+        or len(name) > 150
+        or not institutional_identifier
+        or len(institutional_identifier) > 256
+        or (credential and len(credential) > 256)
+    ):
+        raise ValueError("A valid name and institutional identifier are required")
     with Session(engine) as db, db.begin():
         # Makes two concurrent local bootstrap commands mutually exclusive.
         db.execute(text("SELECT pg_advisory_xact_lock(848374672)"))
@@ -28,7 +35,11 @@ def bootstrap_admin(name: str, credential: str) -> int:
         if exists is not None:
             raise ValueError("An administrator already exists; use the administration API")
         user = Usuario(
-            nombre=name, rol=role, activo=True, credencial_uid=credential_digest(credential)
+            nombre=name,
+            rol=role,
+            activo=True,
+            credencial_uid=credential_digest(credential),
+            identificador_institucional_hash=credential_digest(institutional_identifier),
         )
         db.add(user)
         db.flush()
@@ -58,7 +69,9 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "bootstrap-admin":
-            identity = bootstrap_admin(args.nombre, getpass.getpass("Credencial registrada: "))
+            identifier = getpass.getpass("ID institucional (obligatorio): ")
+            credential = getpass.getpass("QR del carné (opcional; Enter para omitir): ")
+            identity = bootstrap_admin(args.nombre, identifier, credential)
             print(json.dumps({"administrador_id": identity}))
         else:
             print(json.dumps(purge_expired(dry_run=not args.execute)))

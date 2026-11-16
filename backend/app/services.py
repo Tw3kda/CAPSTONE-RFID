@@ -60,6 +60,7 @@ def asset_view(asset: Activo) -> dict:
         "nombre": asset.nombre,
         "codigo": f"ACT-{asset.id:03}",
         "categoria": asset.categoria.nombre,
+        "categoria_id": asset.categoria_id,
         "estado": asset.estado,
         "condicion": asset.condicion,
         "ultima_revision_at": asset.ultima_revision_at,
@@ -76,6 +77,7 @@ def search_assets(db: Session, q=None, category_id=None, state=None):
             Activo.estado,
             Activo.condicion,
             Activo.ultima_revision_at,
+            Activo.categoria_id,
             Categoria.nombre.label("categoria"),
             Posicion.id.label("posicion_id"),
             Espacio.nombre.label("espacio"),
@@ -117,6 +119,7 @@ def search_assets(db: Session, q=None, category_id=None, state=None):
             "ultima_revision_at": row.ultima_revision_at,
             "codigo": f"ACT-{row.id:03}",
             "categoria": row.categoria,
+            "categoria_id": row.categoria_id,
             "ubicacion": {
                 key: getattr(row, key)
                 for key in (

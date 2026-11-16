@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 RoleName = Literal["usuario", "encargado", "administrador"]
 AssetState = Literal["disponible", "prestado", "en_revision"]
@@ -34,12 +34,24 @@ class UsuarioNuevo(Input):
     rol: RoleName
     correo: str | None = Field(default=None, max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     credencial: Nonempty | None = Field(default=None, max_length=256)
+    identificador_institucional: Nonempty = Field(max_length=256)
 
 
 class UsuarioEdicion(Input):
     nombre: Nonempty | None = Field(default=None, max_length=150)
     rol: RoleName | None = None
     activo: bool | None = None
+    identificador_institucional: Nonempty | None = Field(default=None, max_length=256)
+    credencial: Nonempty | None = Field(default=None, max_length=256)
+
+    @model_validator(mode="after")
+    def preserve_required_identifier(self):
+        if (
+            "identificador_institucional" in self.model_fields_set
+            and self.identificador_institucional is None
+        ):
+            raise ValueError("Institutional identifier cannot be removed")
+        return self
 
 
 class Ubicacion(BaseModel):
@@ -65,11 +77,31 @@ class ActivoEdicion(Input):
     ultima_revision_at: AwareDatetime | None = None
 
 
+class ActivoParcial(Input):
+    nombre: Nonempty | None = Field(default=None, max_length=150)
+    categoria_id: int | None = Field(default=None, gt=0)
+    posicion_asignada_id: int | None = Field(default=None, gt=0)
+    rfid_uid: UID | None = None
+    estado: AssetState | None = None
+    condicion: str | None = Field(default=None, max_length=100)
+    ultima_revision_at: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_changes(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one changed field is required")
+        nonnullable = {"nombre", "categoria_id", "posicion_asignada_id", "rfid_uid", "estado"}
+        if any(getattr(self, field) is None for field in self.model_fields_set & nonnullable):
+            raise ValueError("Asset identity and state fields cannot be null")
+        return self
+
+
 class ActivoOut(BaseModel):
     id: int
     nombre: str
     codigo: str
     categoria: str
+    categoria_id: int
     estado: AssetState
     condicion: str | None = None
     ultima_revision_at: datetime | None = None

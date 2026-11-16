@@ -65,6 +65,7 @@ def test_contract_success_responses_match_all_http_operations(
             "nombre": "Contract",
             "rol": "usuario",
             "credencial": "SYNTHETIC-CONTRACT-42",
+            "identificador_institucional": "SYNTHETIC-CONTRACT-ID-42",
         },
     )
     login = checked(
@@ -95,6 +96,8 @@ def test_contract_success_responses_match_all_http_operations(
     checked("POST", "/espacios", auth=admin, status=201, json={"nombre": "Extra"})
     checked("POST", "/gabinetes", auth=admin, status=201, json={"nombre": "Extra", "espacio_id": 1})
     checked("POST", "/dispositivos", auth=admin, status=201, json={"id": "contract-device"})
+    for resource in ("espacios", "gabinetes", "dispositivos"):
+        checked("GET", f"/{resource}", auth=admin)
     checked(
         "POST",
         "/lectores",
@@ -103,6 +106,7 @@ def test_contract_success_responses_match_all_http_operations(
         json={"dispositivo_id": "contract-device", "canal": 1, "posicion_id": 2},
     )
     checked("PATCH", "/lectores/4", auth=admin, json={"posicion_id": 3})
+    checked("GET", "/lectores", auth=admin)
     asset = {
         "nombre": "Contract asset",
         "categoria_id": 1,

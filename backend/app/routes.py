@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Response
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.config import get_settings
 from app.models import Activo, Categoria, Evento, Gabinete, Lector, Posicion, Rol, Usuario
@@ -7,6 +7,7 @@ from app.realtime import notify_inventory
 from app.schemas import (
     ActivoEdicion,
     ActivoOut,
+    ActivoParcial,
     AssetState,
     CategoriaOut,
     LectorEdicion,
@@ -65,9 +66,12 @@ def set_session_cookie(response: Response, tokens: dict):
 
 @auth.post("/login", response_model=Sesion)
 def login(data: Login, db: Db, response: Response):
+    identity_column = (
+        Usuario.credencial_uid if data.metodo == "qr" else Usuario.identificador_institucional_hash
+    )
     user = db.scalar(
         select(Usuario).where(
-            Usuario.credencial_uid == credential_digest(data.credencial),
+            identity_column == credential_digest(data.credencial),
             Usuario.activo.is_(True),
         )
     )
@@ -121,19 +125,23 @@ def asset(id: int, db: Db, user: User):
     return asset_view(get_or_404(db, Activo, id))
 
 
-def asset_data(data: ActivoEdicion, db: Db) -> dict:
-    get_or_404(db, Categoria, data.categoria_id)
-    get_or_404(db, Posicion, data.posicion_asignada_id)
+def asset_data(data: ActivoEdicion | ActivoParcial, db: Db) -> dict:
     values = data.model_dump(exclude_unset=True)
-    values["rfid_uid"] = data.rfid_uid.upper()
-    if values.get("estado") is None:
-        values["estado"] = "disponible"
+    if "categoria_id" in values:
+        get_or_404(db, Categoria, values["categoria_id"])
+    if "posicion_asignada_id" in values:
+        get_or_404(db, Posicion, values["posicion_asignada_id"])
+    if "rfid_uid" in values:
+        values["rfid_uid"] = values["rfid_uid"].upper()
     return values
 
 
 @administration.post("/activos", status_code=201, response_model=ActivoOut)
 def create_asset(data: ActivoEdicion, db: Db, user: Admin):
-    row = Activo(**asset_data(data, db))
+    values = asset_data(data, db)
+    if values.get("estado") is None:
+        values["estado"] = "disponible"
+    row = Activo(**values)
     db.add(row)
     audit(db, user, "crear_activo", row)
     save(db)
@@ -143,7 +151,7 @@ def create_asset(data: ActivoEdicion, db: Db, user: Admin):
 
 
 @administration.patch("/activos/{id}", response_model=ActivoOut)
-def edit_asset(id: int, data: ActivoEdicion, db: Db, user: Admin):
+def edit_asset(id: int, data: ActivoParcial, db: Db, user: Admin):
     from app.loans import locked_asset
     from app.models import OPEN_LOAN_STATES, Prestamo
 
@@ -154,15 +162,12 @@ def edit_asset(id: int, data: ActivoEdicion, db: Db, user: Admin):
             Prestamo.estado.in_(OPEN_LOAN_STATES),
         )
     )
-    if open_loan is not None and (
-        data.posicion_asignada_id != row.posicion_asignada_id
-        or data.rfid_uid.upper() != row.rfid_uid
-        or (data.estado is not None and data.estado != row.estado)
+    values = asset_data(data, db)
+    if open_loan is not None and any(
+        key in values and values[key] != getattr(row, key)
+        for key in ("posicion_asignada_id", "rfid_uid", "estado")
     ):
         raise HTTPException(409, "Cannot change physical identity or state during an open loan")
-    values = asset_data(data, db)
-    if data.estado is None:
-        values.pop("estado", None)
     for key, value in values.items():
         setattr(row, key, value)
     audit(db, user, "editar_activo", row)
@@ -228,7 +233,14 @@ def create_position(data: PosicionNueva, db: Db, user: Admin):
 def users(db: Db, user: Staff, q: str | None = None):
     query = select(Usuario)
     if q:
-        query = query.where(Usuario.nombre.ilike(f"%{q}%"))
+        digest = credential_digest(q)
+        query = query.where(
+            or_(
+                Usuario.nombre.ilike(f"%{q}%"),
+                Usuario.credencial_uid == digest,
+                Usuario.identificador_institucional_hash == digest,
+            )
+        )
     return [user_view(u) for u in db.scalars(query.order_by(Usuario.id))]
 
 
@@ -241,6 +253,7 @@ def create_user(data: UsuarioNuevo, db: Db, user: Admin):
         activo=True,
         correo=protect(data.correo),
         credencial_uid=credential_digest(data.credencial),
+        identificador_institucional_hash=credential_digest(data.identificador_institucional),
     )
     db.add(row)
     audit(db, user, "crear_usuario", row)
@@ -252,6 +265,12 @@ def create_user(data: UsuarioNuevo, db: Db, user: Admin):
 def edit_user(id: int, data: UsuarioEdicion, db: Db, user: Admin):
     row = get_or_404(db, Usuario, id)
     values = data.model_dump(exclude_unset=True)
+    if "identificador_institucional" in values:
+        row.identificador_institucional_hash = credential_digest(
+            values.pop("identificador_institucional"),
+        )
+    if "credencial" in values:
+        row.credencial_uid = credential_digest(values.pop("credencial"))
     if any(value is None for value in values.values()):
         raise HTTPException(422, "Account fields cannot be null")
     role = values.pop("rol", None)
@@ -275,6 +294,11 @@ def create_reader(data: LectorNuevo, db: Db, user: Admin):
     audit(db, user, "crear_lector", row)
     save(db)
     return row
+
+
+@administration.get("/lectores", response_model=list[LectorOut])
+def list_readers(db: Db, user: Admin):
+    return db.scalars(select(Lector).order_by(Lector.id)).all()
 
 
 @administration.patch("/lectores/{id}", response_model=LectorOut)

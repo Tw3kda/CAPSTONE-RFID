@@ -14,7 +14,7 @@
 - **RNF-07.** Las conexiones públicas de la aplicación y de los ESP32 con la API deben usar HTTPS y verificación válida del certificado TLS.
 - **RNF-08.** Cada ESP32 debe autenticarse con su propia credencial; el backend debe guardar únicamente su representación protegida, nunca la clave en texto claro.
 - **RNF-09.** El backend debe verificar permisos en cada operación protegida, independientemente de las restricciones visuales del frontend.
-- **RNF-10.** La identificación debe validar el QR o identificador contra una credencial registrada por el administrador y una cuenta activa. Por decisión de alcance, se confía en esta credencial local, sin contraseña, segundo factor ni integración Microsoft. Una copia del QR o conocer el identificador registrado permite identificarse como su titular; esta limitación se acepta para el proyecto.
+- **RNF-10.** La identificación debe validar el QR o ID institucional contra su registro independiente autorizado y una cuenta activa. Cada alta requiere ID institucional y permite asociar un QR opcional, almacenados solo como representaciones protegidas. Por decisión de alcance, se confía en estos identificadores locales, sin contraseña, segundo factor ni integración Microsoft. Una copia del QR o conocer el ID registrado permite identificarse como su titular; esta limitación se acepta para el proyecto.
 - **RNF-11.** El sistema debe limitar la recolección de datos personales a los necesarios para operar y registrar acciones relevantes de administración.
 - **RNF-12.** Los préstamos cerrados deben conservarse ordinariamente 24 meses; los eventos RFID no vinculados, 90 días; la auditoría, 12 meses, salvo obligación legal o instrucción institucional aplicable.
 

@@ -30,12 +30,18 @@ class Rol(Base):
 
 class Usuario(Base):
     __tablename__ = "usuario"
-    __table_args__ = (UniqueConstraint("credencial_uid", name="uq_usuario_credencial"),)
+    __table_args__ = (
+        UniqueConstraint("credencial_uid", name="uq_usuario_credencial"),
+        UniqueConstraint(
+            "identificador_institucional_hash", name="uq_usuario_identificador_institucional"
+        ),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     rol_id: Mapped[int] = mapped_column(ForeignKey("rol.id"))
     nombre: Mapped[str] = mapped_column(String(150))
     correo: Mapped[str | None] = mapped_column(Text)
     credencial_uid: Mapped[str | None] = mapped_column(Text)
+    identificador_institucional_hash: Mapped[str | None] = mapped_column(Text)
     consentimiento_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activo: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
     rol: Mapped[Rol] = relationship(lazy="joined")

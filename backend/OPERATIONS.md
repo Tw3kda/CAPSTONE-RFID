@@ -27,15 +27,36 @@ After applying migrations, create the first administrator explicitly from a loca
 docker compose -f docker-compose.dev.yml exec backend python -m app.cli bootstrap-admin --nombre "Administrador"
 ```
 
-The command prompts for the credential without echoing it. It refuses to run if an
+The command prompts for the mandatory institutional ID and optional card QR without echoing
+either value. It refuses to run if an
 administrator already exists. No default administrator or public registration endpoint
 exists. For production use the same command with `docker-compose.yml` from the trusted
 deployment shell. Subsequent users and roles are managed through the administrator API.
 
-QR and institutional ID are trusted local identifiers matched against a protected,
-unique registered credential. Neither method invokes Microsoft or a second factor.
+QR and institutional ID are independent trusted local identifiers, each matched against
+its own protected unique registration. Every new user and the bootstrap administrator
+must have an institutional ID; the card QR is optional, and registering both is recommended.
+Administrators can replace the ID, but cannot clear it. They can register, replace or
+explicitly remove a card with `credencial: null`; omitting either field preserves it.
+Neither method invokes Microsoft or a second factor. `metodo=id` never falls back to a QR,
+and `metodo=qr` never uses the institutional ID. Neither identifier is returned by the API.
+The migration leaves the ID column nullable only to preserve legacy users lacking it:
+an administrator must register their known institutional ID explicitly, without deriving
+it from the QR or inventing a value. New API/CLI accounts cannot omit it.
 Copying another person's credential permits identification as that person; this
 limitation is accepted for this capstone. Roles always come from the server.
+
+Administrator provisioning screens can list `/api/espacios`, `/api/gabinetes`,
+`/api/dispositivos` and `/api/lectores`; these four lists require the administrator role.
+The device list returns only ID, firmware, last heartbeat timestamp and RSSI, never a
+key or hash. Delegated user search matches names or an exact registered QR/ID without
+returning either identifier. The numeric user `id` is internal, not institutional.
+
+Asset reads expose `categoria_id` for category selection, but do not expose RFID UIDs.
+An administrator edits only changed fields through partial `PATCH /api/activos/{id}`;
+omitted fields are preserved, including the old UID. A new known UID can be supplied to
+replace it. Empty/invalid changes are rejected, and open-loan physical identity/state
+guards still apply. Nullable condition/review timestamp fields can be cleared explicitly.
 
 ## Devices and physical operations
 

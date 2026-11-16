@@ -12,7 +12,8 @@ Table usuario {
   rol_id bigint [not null, ref: > rol.id]
   nombre varchar(150) [not null]
   correo text [note: 'Protegido mediante cifrado']
-  credencial_uid text [unique, note: 'HMAC de credencial registrada localmente; QR e ID son identificadores de confianza, no prueba contra suplantación']
+  credencial_uid text [unique, note: 'HMAC del QR registrado localmente; identificador de confianza, no prueba contra suplantación']
+  identificador_institucional_hash text [unique, note: 'HMAC del ID institucional registrado explícitamente por administrador, obligatorio en altas nuevas y no eliminable por API; nullable solo para preservar cuentas legadas pendientes de registrar ID. Independiente del QR, nunca derivado de él']
   consentimiento_at timestamptz
   activo boolean [not null, default: true]
 }
