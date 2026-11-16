@@ -1,90 +1,44 @@
-import { useEffect, useState } from 'react'
-import { Link, useRoute } from './router.jsx'
-import { RECURSO_REFERENCIA } from './data.js'
+﻿import { useEffect } from 'react'
+import { Link, useRoute, navigate } from './router.jsx'
+import { useSession } from './session.jsx'
+import { Page, Shell, PageHeader, ErrorNotice } from './components.jsx'
 import { Acceso, AccesoQR } from './screens/Acceso.jsx'
 import { Inicio } from './screens/Inicio.jsx'
 import { Inventario, Ficha, Ubicacion } from './screens/Inventario.jsx'
-import { PrestamoForm, Retiro, ComprobanteRetiro, RecursoInesperado, SinResponsable } from './screens/Prestamo.jsx'
-import {
-  MisRecursos,
-  DetallePrestamo,
-  DevolucionSeleccion,
-  DevolucionLectura,
-  DevolucionUbicacion,
-  ComprobanteDevolucion,
-  RecursoIncorrecto,
-  UbicacionNoConfirmada,
-} from './screens/MisRecursos.jsx'
+import { PrestamoForm } from './screens/Prestamo.jsx'
+import { MisRecursos, DetallePrestamo } from './screens/MisRecursos.jsx'
 import { Analisis, Reutilizar } from './screens/Analisis.jsx'
-import { Flujos } from './screens/Flujos.jsx'
-
-function pantalla(path, query, prestamo, setPrestamo) {
-  const recurso = path.match(/^\/recurso\/([^/]+)(\/ubicacion)?$/)
-  if (recurso) return recurso[2] ? <Ubicacion id={recurso[1]} /> : <Ficha id={recurso[1]} />
-
-  switch (path) {
-    case '/acceso':
-      return <Acceso />
-    case '/acceso/qr':
-      return <AccesoQR />
-    case '/inicio':
-      return <Inicio />
-    case '/inventario':
-      return <Inventario key={query.get('q')} q0={query.get('q') ?? ''} />
-    case '/prestamo':
-      return <PrestamoForm key={query.get('id')} id0={query.get('id')} setPrestamo={setPrestamo} />
-    case '/prestamo/retiro':
-      return <Retiro prestamo={prestamo} />
-    case '/prestamo/comprobante':
-      return <ComprobanteRetiro prestamo={prestamo} />
-    case '/prestamo/inesperado':
-      return <RecursoInesperado prestamo={prestamo} />
-    case '/prestamo/sin-responsable':
-      return <SinResponsable />
-    case '/mis-recursos':
-      return <MisRecursos />
-    case '/mis-recursos/prestamo':
-      return <DetallePrestamo />
-    case '/devolucion':
-      return <DevolucionSeleccion />
-    case '/devolucion/lectura':
-      return <DevolucionLectura />
-    case '/devolucion/ubicacion':
-      return <DevolucionUbicacion />
-    case '/devolucion/comprobante':
-      return <ComprobanteDevolucion />
-    case '/devolucion/incorrecto':
-      return <RecursoIncorrecto />
-    case '/devolucion/no-confirmada':
-      return <UbicacionNoConfirmada />
-    case '/analisis':
-      return <Analisis />
-    case '/analisis/reutilizar':
-      return <Reutilizar />
-    case '/flujos':
-      return <Flujos />
-    default:
-      return <Acceso />
-  }
-}
+import { Admin } from './screens/Admin.jsx'
 
 export default function App() {
   const { path, query } = useRoute()
-  // Escenario de préstamo en curso. Por defecto, el ejemplo delegado del diseño.
-  const [prestamo, setPrestamo] = useState({ recursoId: RECURSO_REFERENCIA, modo: 'delegado' })
-
+  const { user, ready, error, client } = useSession()
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [path])
-
-  return (
-    <>
-      {pantalla(path, query, prestamo, setPrestamo)}
-      {path !== '/flujos' && (
-        <Link to="/flujos" className="fab-flujos" title="Índice de pantallas del prototipo">
-          Flujos
-        </Link>
-      )}
-    </>
-  )
+    document.title = 'Thesora · Cada recurso, en su lugar'
+    if (user && path.startsWith('/acceso')) navigate('/inicio')
+  }, [path, user])
+  if (!ready) return <Shell sinNav><PageHeader titulo="Recuperando sesión…" /></Shell>
+  if (!user) return path === '/acceso/qr' ? <AccesoQR /> : <Acceso />
+  if (error && error.status !== 401) return <Shell sinNav><PageHeader titulo="No se pudo recuperar la sesión" /><div className="container content"><ErrorNotice error={error} retry={() => window.location.reload()} /><button className="btn btn--secondary" onClick={client.logout}>Volver al acceso</button></div></Shell>
+  const asset = path.match(/^\/recurso\/(\d+)(\/ubicacion)?$/)
+  if (asset) return asset[2] ? <Ubicacion key={path} id={asset[1]} /> : <Ficha key={path} id={asset[1]} />
+  if (path.startsWith('/admin')) {
+    if (user.rol !== 'administrador') return <Page titulo="Acceso restringido" subtitulo="Esta sección requiere el rol Administrador."><Link to="/inicio" className="btn btn--primary">Ir al inicio</Link></Page>
+    return <Admin key={path} section={path.split('/')[2] || 'usuarios'} />
+  }
+  const id = query.get('id')
+  switch (path) {
+    case '/acceso': case '/inicio': return <Inicio />
+    case '/inventario': return <Inventario key={query.get('q')} q0={query.get('q') || ''} />
+    case '/prestamo': return <PrestamoForm key={id} id0={id} />
+    case '/mis-recursos': return <MisRecursos />
+    case '/devolucion': return <MisRecursos selecting />
+    case '/prestamo/retiro': case '/prestamo/comprobante': return id ? <DetallePrestamo key={id} id={id} operation="retiro" /> : <MisRecursos />
+    case '/mis-recursos/prestamo': return id ? <DetallePrestamo key={id} id={id} /> : <MisRecursos />
+    case '/devolucion/lectura': case '/devolucion/ubicacion': case '/devolucion/comprobante': return id ? <DetallePrestamo key={id} id={id} operation="devolucion" /> : <MisRecursos selecting />
+    case '/analisis': return <Analisis />
+    case '/analisis/reutilizar': return <Reutilizar />
+    default: return <Page titulo="Página no encontrada"><Link to="/inicio" className="btn btn--primary">Ir al inicio</Link></Page>
+  }
 }
+

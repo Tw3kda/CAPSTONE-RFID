@@ -1,126 +1,23 @@
-import { useState } from 'react'
-import { Shell, PageHeader, ResourceRow } from '../components.jsx'
+﻿import { useState } from 'react'
+import { Page, LoadState, ErrorNotice, ResourceRow } from '../components.jsx'
 import { Link } from '../router.jsx'
-import { REUTILIZABLES, USO_SEMANAL, buscarRecurso } from '../data.js'
-
-const MAX_USO = Math.max(...USO_SEMANAL.map((s) => s.usos))
+import { useApi, useMutation } from '../session.jsx'
 
 export function Analisis() {
-  // 'nueva' → aún no se genera · 'abierta' → visible · 'oculta' → generada pero plegada
-  const [reco, setReco] = useState('nueva')
-  const textoBoton = { nueva: 'Generar recomendación', abierta: 'Ocultar recomendación', oculta: 'Ver recomendación' }[reco]
-
-  return (
-    <Shell activo="analisis">
-      <PageHeader titulo="Uso responsable de recursos" subtitulo="Reutilización y mantenimiento para reducir el desperdicio." />
-      <div className="container content">
-        <p className="note">Últimos 30 días · Laboratorio de electrónica</p>
-
-        <div className="indicadores">
-          {[
-            [9, 'Recursos disponibles'],
-            [3, 'Con poco uso'],
-            [1, 'En revisión'],
-          ].map(([n, texto]) => (
-            <div key={texto} className="card indicador">
-              <strong>{n}</strong>
-              <span className="note">{texto}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="analisis-grid">
-          <section className="card">
-            <h2>Uso de recursos por semana</h2>
-            <p className="note">El historial ayuda a identificar recursos infrautilizados.</p>
-            <ol className="barras" aria-label="Usos por semana">
-              {USO_SEMANAL.map((s) => (
-                <li key={s.semana}>
-                  <strong>{s.usos}</strong>
-                  <span className="barras__barra" style={{ height: `${(s.usos / MAX_USO) * 84}px` }} />
-                  <span className="note">{s.semana}</span>
-                </li>
-              ))}
-            </ol>
-          </section>
-          <div className="pila">
-            <section className="card">
-              <h2>Recursos para aprovechar</h2>
-              <ul className="lista-simple">
-                {REUTILIZABLES.map((id) => (
-                  <li key={id}>{buscarRecurso(id).nombre}</li>
-                ))}
-              </ul>
-            </section>
-            <section className="card">
-              <h2>Prolongar la vida útil</h2>
-              <p className="note note--fuerte">1 equipo en revisión. Evaluar mantenimiento antes de reemplazarlo.</p>
-            </section>
-          </div>
-        </div>
-
-        <section className="card reco">
-          <h2>Recomendación de IA</h2>
-          <p className="note">Genera una sugerencia de reutilización o mantenimiento con los datos del periodo.</p>
-          <button
-            type="button"
-            className="btn btn--primary"
-            aria-expanded={reco === 'abierta'}
-            aria-controls="reco-detalle"
-            onClick={() => setReco(reco === 'abierta' ? 'oculta' : 'abierta')}
-          >
-            {textoBoton}
-          </button>
-          {reco === 'abierta' && (
-            <div id="reco-detalle" className="reco__detalle">
-              <p>
-                Antes de adquirir nuevos equipos, revisa los recursos disponibles con poco uso. Aprovecharlos y mantenerlos puede evitar
-                compras y residuos innecesarios.
-              </p>
-              <h3>Aprovecha los recursos existentes</h3>
-              <p>
-                La IA identifica tres recursos disponibles con poco uso. Revisa si cubren la necesidad de tu práctica antes de solicitar
-                nuevos equipos.
-              </p>
-              <h3>¿Qué muestra el inventario?</h3>
-              <p>9 recursos disponibles y 3 con poco uso en el periodo.</p>
-              <p>1 equipo en revisión: evaluar reparación antes de reemplazarlo.</p>
-              <p>La trazabilidad ayuda a evitar adquisiciones duplicadas y descartes prematuros.</p>
-              <h3>Cómo reducir desperdicio</h3>
-              <ol>
-                <li>Verifica compatibilidad y estado del recurso.</li>
-                <li>Reutiliza lo disponible para tu práctica.</li>
-                <li>Prioriza mantenimiento antes de sustituir equipos.</li>
-              </ol>
-              <Link to="/analisis/reutilizar" className="btn btn--primary">
-                Ver recursos disponibles
-              </Link>
-            </div>
-          )}
-        </section>
-      </div>
-    </Shell>
-  )
+  const summary = useApi('/analisis/resumen')
+  const reusable = useApi('/analisis/reutilizables')
+  const [recommendation, setRecommendation] = useState(null)
+  const [open, setOpen] = useState(false)
+  const action = useMutation()
+  async function toggle() {
+    if (recommendation) { setOpen((value) => !value); return }
+    const result = await action.mutate('/analisis/recomendacion')
+    if (result) { setRecommendation(result); setOpen(true) }
+  }
+  return <Page activo="analisis" titulo="Uso responsable de recursos" subtitulo="Reutilización y mantenimiento para reducir el desperdicio."><p className="note">Últimos 90 días · Semanas en UTC</p><LoadState request={summary}>{(data) => <><div className="indicadores">{[[data.disponibles,'Recursos disponibles'],[data.baja_utilizacion.length,'Con poco uso'],[data.en_revision,'En revisión']].map(([number,label]) => <div key={label} className="card indicador"><strong>{number}</strong><span className="note">{label}</span></div>)}</div><div className="analisis-grid"><section className="card"><h2>Uso de recursos por semana</h2><p className="note">Retiros físicos confirmados. Incluye semanas sin movimientos.</p><div className="chart-scroll"><ol className="barras" aria-label="Retiros por semana">{data.uso_semanal.map((week) => <li key={week.semana}><strong>{week.movimientos}</strong><span className="barras__barra" aria-hidden="true" style={{ height: `${Math.max(2, week.movimientos / Math.max(1,...data.uso_semanal.map((value) => value.movimientos)) * 84)}px` }} /><span className="note">{week.semana}</span></li>)}</ol></div>{!data.uso_semanal.length && <p className="note">Sin semanas registradas.</p>}</section><div className="pila"><section className="card"><h2>Recursos para aprovechar</h2><LoadState request={reusable}>{(items) => items.length ? <ul className="lista-simple">{items.map((item) => <li key={item.id}><Link to={`/recurso/${item.id}`} className="enlace">{item.nombre}</Link></li>)}</ul> : <p className="note">No hay recursos de baja utilización en este período.</p>}</LoadState></section><section className="card"><h2>Prolongar la vida útil</h2><p className="note">{data.en_revision} {data.en_revision === 1 ? 'recurso en revisión' : 'recursos en revisión'}. Evalúa mantenimiento antes de reemplazar.</p></section></div></div></>}</LoadState><section className="card reco"><h2>Recomendación de reutilización</h2><p className="note">Sugerencia descriptiva basada en los datos del período.</p><button className="btn btn--primary" disabled={action.busy} aria-expanded={open} aria-controls="reco-detalle" onClick={toggle}>{action.busy ? 'Generando…' : !recommendation ? 'Generar recomendación' : open ? 'Ocultar recomendación' : 'Ver recomendación'}</button><ErrorNotice error={action.error} />{open && recommendation && <div id="reco-detalle" className="reco__detalle"><p>{recommendation.texto}</p>{recommendation.datos_insuficientes && <p className="notice-warning">Datos insuficientes: la ausencia de movimientos no demuestra desuso durante los 90 días completos.</p>}<h3>Consultar recursos sugeridos</h3>{recommendation.activos_relacionados.length ? <ul className="lista-simple">{recommendation.activos_relacionados.map((id) => <li key={id}><Link to={`/recurso/${id}`} className="enlace">{reusable.data?.find((item) => item.id === id)?.nombre || `Recurso ACT-${String(id).padStart(3,'0')}`}</Link></li>)}</ul> : <p>Sin recursos relacionados en este momento.</p>}<Link to="/analisis/reutilizar" className="btn btn--primary">Ver recursos disponibles</Link></div>}</section></Page>
 }
-
 export function Reutilizar() {
-  return (
-    <Shell activo="analisis">
-      <PageHeader titulo="Recursos para reutilizar" subtitulo="Abre una ficha para comprobar estado, ubicación y disponibilidad." />
-      <div className="container content">
-        <div className="col-principal">
-          <div className="rows">
-            {REUTILIZABLES.map((id) => (
-              <ResourceRow key={id} recurso={buscarRecurso(id)} />
-            ))}
-          </div>
-          <div className="actions">
-            <Link to="/analisis" className="btn btn--primary">
-              Volver al análisis
-            </Link>
-          </div>
-        </div>
-      </div>
-    </Shell>
-  )
+  const assets = useApi('/analisis/reutilizables')
+  return <Page activo="analisis" titulo="Recursos para reutilizar" subtitulo="Abre una ficha para comprobar estado, ubicación y disponibilidad."><div className="col-principal"><LoadState request={assets}>{(items) => items.length ? <div className="rows">{items.map((item) => <ResourceRow key={item.id} recurso={item} />)}</div> : <p className="note">No hay recursos de baja utilización en este período.</p>}</LoadState><div className="actions"><Link to="/analisis" className="btn btn--primary">Volver al análisis</Link></div></div></Page>
 }
+

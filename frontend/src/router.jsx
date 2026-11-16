@@ -1,6 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
-// Navegación mínima por hash (#/ruta) para no depender de una librería todavía.
+// Hash routes also work when the frontend is served as static files.
 const suscribir = (cb) => {
   window.addEventListener('hashchange', cb)
   return () => window.removeEventListener('hashchange', cb)
@@ -25,19 +25,3 @@ export function Link({ to, children, ...rest }) {
   )
 }
 
-// Simula un evento físico (lectura QR o RFID): avanza solo tras `ms`.
-// Se pausa mientras el puntero o el foco están sobre el elemento que recibe estas props.
-export function useAutoAdvance(to, ms = 1800) {
-  const [pausado, setPausado] = useState(false)
-  useEffect(() => {
-    if (pausado) return
-    const t = setTimeout(() => navigate(to), ms)
-    return () => clearTimeout(t)
-  }, [to, ms, pausado])
-  return {
-    onMouseEnter: () => setPausado(true),
-    onMouseLeave: () => setPausado(false),
-    onFocus: () => setPausado(true),
-    onBlur: () => setPausado(false),
-  }
-}
