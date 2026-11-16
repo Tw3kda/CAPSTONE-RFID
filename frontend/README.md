@@ -20,11 +20,11 @@ El despliegue de producción usa el build de Vite servido por nginx, con proxy `
 
 ## Acceso y sesión
 
-El administrador registra un ID universitario obligatorio y puede registrar también el contenido QR del carné. Son identificadores independientes: el frontend no deduce uno del otro. La cuenta debe estar activa. No hay cuentas predeterminadas, contraseña ni verificación Microsoft.
+El administrador registra un ID universitario y una clave de 12 a 128 caracteres, y puede registrar también el contenido QR del carné. El acceso manual requiere ID y clave; el QR no solicita clave. La normalización del QR pertenece al backend: el frontend envía su contenido completo. La cuenta debe estar activa. No hay cuentas predeterminadas ni verificación Microsoft.
 
 El acceso ofrece ID manual, lectura de QR con cámara y pegado de su contenido. La cámara requiere permiso, un contexto seguro y soporte nativo de `BarcodeDetector` para QR; si falta soporte o se rechaza el permiso, se conserva el acceso por ID y pegado. La aplicación no simula lecturas.
 
-Los tokens se conservan en `sessionStorage` de la pestaña. El cliente centralizado renueva el acceso ante 401 y coordina renovaciones concurrentes. El handshake WebSocket usa la cookie HttpOnly emitida por el backend, sin tokens en la URL. Salir elimina la sesión de la aplicación y cierra el canal. El backend mantiene su política de caducidad de tokens.
+Los tokens se conservan en `sessionStorage` de la pestaña; la clave no se guarda en la sesión ni en el almacenamiento del navegador. El cliente centralizado renueva el acceso ante 401 y coordina renovaciones concurrentes. El handshake WebSocket usa la cookie HttpOnly emitida por el backend, sin tokens en la URL. Salir elimina la sesión de la aplicación y cierra el canal. El backend mantiene su política de caducidad de tokens.
 
 ## Pantallas y operaciones
 
@@ -36,7 +36,7 @@ Los tokens se conservan en `sessionStorage` de la pestaña. El cliente centraliz
 - Análisis de los últimos 90 días: disponibilidad, retiros semanales, baja utilización y recursos relacionados. Generar recomendación y Generar nueva recomendación solicitan un resultado al backend; el botón separado Mostrar/Ocultar conserva el resultado sin otra solicitud. Si falla una nueva generación, se mantiene el resultado anterior y se ofrece reintentar.
 - Administración: usuarios y activos con alta/edición; categorías, espacios, gabinetes y posiciones con las altas admitidas por contrato; dispositivos con alta y estado reportado; lectores con alta y reasignación de posición.
 
-La credencial de un dispositivo se muestra únicamente en el resultado de su alta y se elimina de la vista al cerrarlo. Los identificadores protegidos de usuarios no se recuperan: los campos vacíos de edición conservan el valor, y retirar QR requiere marcar una acción explícita.
+La credencial de un dispositivo se muestra únicamente en el resultado de su alta y se elimina de la vista al cerrarlo. Los identificadores y claves de usuarios no se recuperan: los campos vacíos de edición conservan el valor, una nueva clave restablece el acceso y retirar QR requiere marcar una acción explícita. Las claves se envían sin recortar sus espacios.
 
 Las rutas usan hash para admitir alojamiento estático. Los enlaces a operaciones conservan el ID del préstamo; al recargar se consulta de nuevo su estado. Las vistas presentan carga, vacío, errores y recuperación. Las notificaciones WebSocket invalidan consultas y, al reconectar, recuperan datos del servidor. Durante la desconexión se muestra un aviso y se puede actualizar manualmente.
 

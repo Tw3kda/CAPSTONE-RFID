@@ -7,15 +7,16 @@ import { useSession } from '../hooks.js'
 export function Acceso() {
   const { client } = useSession()
   const [credential, setCredential] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError(null)
-    try { await client.login('id', credential); navigate('/inicio') }
-    catch (err) { setError(err.status === 401 ? new Error('ID no registrado o cuenta inactiva. Comprueba tu credencial o consulta al administrador.') : err) }
+    try { await client.login('id', credential, password); navigate('/inicio') }
+    catch (err) { setError(err.status === 401 ? new Error('ID o clave incorrectos. Revisa los datos y vuelve a intentar.') : err) }
     finally { setBusy(false) }
   }
-  return <Shell sinNav><PageHeader titulo="Identifícate para continuar" subtitulo="Accede al laboratorio con tu credencial universitaria." /><div className="container content"><div className="opciones"><section className="card opcion"><h2>Opción 1 · QR</h2><p className="note">Abre la cámara y escanea tu credencial registrada.</p><Link to="/acceso/qr" className="btn btn--primary">Escanear QR</Link></section><form className="card opcion" onSubmit={submit}><h2>Opción 2 · ID universitario</h2><p className="note">Escribe tu identificador institucional registrado.</p><Field label="ID universitario"><input className="field" value={credential} onChange={(event) => setCredential(event.target.value)} required maxLength={256} autoComplete="off" /></Field><ErrorNotice error={error} /><button className="btn btn--secondary" disabled={busy}>{busy ? 'Identificando…' : 'Ingresar con ID'}</button></form></div></div></Shell>
+  return <Shell sinNav><PageHeader titulo="Identifícate para continuar" subtitulo="Accede al laboratorio con tu credencial universitaria." /><div className="container content"><div className="opciones"><section className="card opcion"><h2>Opción 1 · QR</h2><p className="note">Abre la cámara y escanea tu credencial registrada.</p><Link to="/acceso/qr" className="btn btn--primary">Escanear QR</Link></section><form className="card opcion" onSubmit={submit}><h2>Opción 2 · ID universitario</h2><p className="note">Escribe tu identificador institucional registrado.</p><Field label="ID universitario"><input className="field" value={credential} onChange={(event) => setCredential(event.target.value)} required maxLength={256} autoComplete="username" /></Field><Field label="Clave"><input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={12} maxLength={128} autoComplete="current-password" /></Field><ErrorNotice error={error} /><button className="btn btn--secondary" disabled={busy}>{busy ? 'Identificando…' : 'Ingresar con ID'}</button></form></div></div></Shell>
 }
 
 export function AccesoQR() {

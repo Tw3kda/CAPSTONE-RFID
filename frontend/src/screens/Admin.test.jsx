@@ -25,8 +25,8 @@ async function setup(section) {
       result = { id: 8, activo: true, ...JSON.parse(options.body) }
       lists[section].push(result)
     } else if (options.method === 'PATCH') {
-      result = { ...asset, ...JSON.parse(options.body) }
-      lists.activos = [result]
+      if (url.includes('/usuarios/')) { result = { ...user, ...JSON.parse(options.body) }; delete result.clave; lists.usuarios = [result] }
+      else { result = { ...asset, ...JSON.parse(options.body) }; lists.activos = [result] }
     } else result = lists[section] || []
     return new Response(JSON.stringify(result), { status: 200 })
   } })
@@ -42,10 +42,26 @@ it('crea una cuenta con ID institucional obligatorio y permite omitir QR', async
   await user.click(await screen.findByRole('button', { name: 'Nuevo usuario' }))
   await user.type(screen.getByLabelText('Nombre'), 'Cuenta nueva')
   await user.type(screen.getByLabelText('ID universitario registrado'), 'test-institutional-id')
+  await user.type(screen.getByLabelText('Clave'), 'new-test-password')
   await user.click(screen.getByRole('button', { name: 'Guardar' }))
   await screen.findByRole('cell', { name: 'Cuenta nueva' })
   const create = requests.find(([url, options]) => url.endsWith('/usuarios') && options.method === 'POST')
-  expect(JSON.parse(create[1].body)).toEqual({ nombre: 'Cuenta nueva', rol: 'usuario', identificador_institucional: 'test-institutional-id' })
+  expect(JSON.parse(create[1].body)).toEqual({ nombre: 'Cuenta nueva', rol: 'usuario', identificador_institucional: 'test-institutional-id', clave: 'new-test-password' })
+})
+
+it('conserva la clave en edición vacía y permite restablecerla sin recortar espacios', async () => {
+  const { user, requests } = await setup('usuarios')
+  await user.click(await screen.findByRole('button', { name: 'Editar Administración de prueba' }))
+  expect(screen.getByLabelText('Nueva clave (opcional)').value).toBe('')
+  await user.click(screen.getByRole('button', { name: 'Guardar' }))
+  await screen.findByRole('button', { name: 'Nuevo usuario' })
+  expect(JSON.parse(requests.find(([url, options]) => url.endsWith('/usuarios/7') && options.method === 'PATCH')[1].body)).not.toHaveProperty('clave')
+  await user.click(await screen.findByRole('button', { name: 'Editar Administración de prueba' }))
+  await user.type(screen.getByLabelText('Nueva clave (opcional)'), ' reset-test-password ')
+  await user.click(screen.getByRole('button', { name: 'Guardar' }))
+  await screen.findByRole('button', { name: 'Nuevo usuario' })
+  const edits = requests.filter(([url, options]) => url.endsWith('/usuarios/7') && options.method === 'PATCH')
+  expect(JSON.parse(edits[1][1].body).clave).toBe(' reset-test-password ')
 })
 
 it('edita un activo sin reenviar ni inventar su RFID protegido', async () => {

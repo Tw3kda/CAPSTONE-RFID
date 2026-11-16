@@ -5,6 +5,19 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const session = { usuario: { id: 7, nombre: 'Persona de prueba', rol: 'usuario', activo: true }, tokens: { access_token: 'old', refresh_token: 'refresh', token_type: 'bearer', expires_in: 900 } }
 
 describe('cliente HTTP de sesión', () => {
+  it('envía clave solo para ID, preserva sus espacios y no la guarda en la sesión', async () => {
+    const stored = new Map()
+    const storage = { getItem: (key) => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: (key) => stored.delete(key) }
+    const payloads = []
+    const api = createApi({ storage, fetcher: async (_, options) => { payloads.push(JSON.parse(options.body)); return json(session) } })
+    await api.login('id', ' test-institutional-id ', ' test-password-only ')
+    expect(payloads[0]).toEqual({ metodo: 'id', credencial: 'test-institutional-id', clave: ' test-password-only ' })
+    expect([...stored.values()].join('')).not.toContain('test-password-only')
+    expect(api.getSession()).not.toHaveProperty('clave')
+    await api.login('qr', 'qr-test-only', 'must-never-be-sent')
+    expect(payloads[1]).toEqual({ metodo: 'qr', credencial: 'qr-test-only' })
+  })
+
   it('identifica con credencial y renueva una sola vez peticiones concurrentes antes de repetirlas', async () => {
     let refreshes = 0
     const calls = []

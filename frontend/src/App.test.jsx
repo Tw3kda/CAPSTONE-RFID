@@ -50,6 +50,7 @@ async function login() {
   const user = userEvent.setup()
   await user.clear(screen.getByLabelText('ID universitario'))
   await user.type(screen.getByLabelText('ID universitario'), 'test-institutional-id')
+  await user.type(screen.getByLabelText('Clave'), 'test-password-only')
   await user.click(screen.getByRole('button', { name: 'Ingresar con ID' }))
   await screen.findByRole('heading', { name: /Hola, Persona de prueba/ })
   return user

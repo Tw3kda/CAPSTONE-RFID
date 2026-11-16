@@ -78,9 +78,9 @@ export function createApi({ base = '/api', fetcher = (...args) => fetch(...args)
     request, refresh, logout,
     getSession: () => session,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
-    async login(metodo, credencial) {
+    async login(metodo, credencial, clave) {
       const current = ++generation
-      const data = await send('/auth/login', { method: 'POST', body: { metodo, credencial: credencial.trim() } })
+      const data = await send('/auth/login', { method: 'POST', body: { metodo, credencial: credencial.trim(), ...(metodo === 'id' ? { clave } : {}) } })
       if (current === generation) update({ ...data, expiresAt: Date.now() + data.tokens.expires_in * 1000 })
       return data
     },

@@ -20,7 +20,7 @@ function TextField({ label, name, value = '', required = true, ...props }) {
   return <Field label={label}><input className="field" name={name} defaultValue={value ?? ''} required={required} {...props} /></Field>
 }
 function UserFields({ row }) {
-  return <><TextField label="Nombre" name="nombre" value={row?.nombre} maxLength={150} /><Field label="Rol"><select className="field" name="rol" defaultValue={row?.rol || 'usuario'}>{['usuario','encargado','administrador'].map((role) => <option key={role} value={role}>{role}</option>)}</select></Field><TextField label={row ? 'Nuevo ID universitario (opcional)' : 'ID universitario registrado'} name="identificador_institucional" required={!row} maxLength={256} autoComplete="off" /><TextField label={row ? 'Nuevo contenido QR (opcional)' : 'Contenido QR de la credencial (opcional)'} name="credencial" required={false} maxLength={256} autoComplete="off" />{row ? <><p className="note">Los identificadores protegidos no se recuperan. Deja los campos vacíos para conservarlos.</p><label className="check-field"><input type="checkbox" name="retirar_qr" />Retirar QR registrado</label><label className="check-field"><input type="checkbox" name="activo" defaultChecked={row.activo} />Cuenta activa</label></> : <><p className="note">Registra ambos identificadores cuando estén disponibles. El ID universitario es obligatorio; el QR es opcional.</p><TextField label="Correo institucional (opcional)" name="correo" type="email" required={false} maxLength={320} /></>}</>
+  return <><TextField label="Nombre" name="nombre" value={row?.nombre} maxLength={150} /><Field label="Rol"><select className="field" name="rol" defaultValue={row?.rol || 'usuario'}>{['usuario','encargado','administrador'].map((role) => <option key={role} value={role}>{role}</option>)}</select></Field><TextField label={row ? 'Nuevo ID universitario (opcional)' : 'ID universitario registrado'} name="identificador_institucional" required={!row} maxLength={256} autoComplete="off" /><TextField label={row ? 'Nueva clave (opcional)' : 'Clave'} name="clave" type="password" required={!row} minLength={12} maxLength={128} autoComplete="new-password" /><TextField label={row ? 'Nuevo contenido QR (opcional)' : 'Contenido QR de la credencial (opcional)'} name="credencial" required={false} maxLength={256} autoComplete="off" />{row ? <><p className="note">Los identificadores y la clave no se recuperan. Deja los campos vacíos para conservarlos.</p><label className="check-field"><input type="checkbox" name="retirar_qr" />Retirar QR registrado</label><label className="check-field"><input type="checkbox" name="activo" defaultChecked={row.activo} />Cuenta activa</label></> : <><p className="note">Registra ambos identificadores cuando estén disponibles. El ID universitario es obligatorio; el QR es opcional.</p><TextField label="Correo institucional (opcional)" name="correo" type="email" required={false} maxLength={320} /></>}</>
 }
 function AssetFields({ row }) {
   const categories = useApi('/categorias')
@@ -50,7 +50,11 @@ function Editor({ section, row, onSaved, onCancel }) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const body = {}
-    for (const [key,value] of form.entries()) if (typeof value === 'string' && value.trim()) body[key] = value.trim()
+    for (const [key,value] of form.entries()) {
+      if (typeof value !== 'string') continue
+      if (key === 'clave') { if (value !== '') body[key] = value }
+      else if (value.trim()) body[key] = value.trim()
+    }
     for (const name of ['categoria_id','posicion_asignada_id','espacio_id','gabinete_id','posicion_id','canal']) if (body[name]) body[name] = Number(body[name])
     if (section === 'usuarios' && row) { body.activo = form.has('activo'); if (form.has('retirar_qr')) body.credencial = null; delete body.retirar_qr }
     if (section === 'activos') {
