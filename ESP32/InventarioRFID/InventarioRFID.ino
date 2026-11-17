@@ -25,11 +25,25 @@
 // CONFIGURACION: EDITAR ESTE BLOQUE
 // =====================================
 
-const char* WIFI_SSID = "TU_WIFI";          // solo redes de 2.4 GHz
-const char* WIFI_PASS = "TU_CLAVE";
+// Las claves van en secrets.h, junto a este archivo. Esta en .gitignore,
+// asi que nunca se sube a GitHub. Contenido:
+//   #define SECRET_WIFI_SSID      "nombre del wifi"   // solo redes de 2.4 GHz
+//   #define SECRET_WIFI_PASS      "clave del wifi"
+//   #define SECRET_DEVICE_API_KEY "clave emitida por Thesora al registrar el ESP32"
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "Falta secrets.h: se usan valores de ejemplo y el ESP32 no se conectara"
+#define SECRET_WIFI_SSID      "TU_WIFI"
+#define SECRET_WIFI_PASS      "TU_CLAVE"
+#define SECRET_DEVICE_API_KEY "TU_CLAVE_DEL_DISPOSITIVO"
+#endif
+
+const char* WIFI_SSID = SECRET_WIFI_SSID;
+const char* WIFI_PASS = SECRET_WIFI_PASS;
 
 const char* API_URL = "https://thesora.redskycol.com/api";
-const char* DEVICE_API_KEY = "TU_CLAVE_DEL_DISPOSITIVO";  // emitida por Thesora al registrar el ESP32
+const char* DEVICE_API_KEY = SECRET_DEVICE_API_KEY;
 
 // Debe coincidir con el dispositivo registrado en Thesora.
 // Solo letras, numeros, guiones y guiones bajos.
@@ -90,7 +104,11 @@ static_assert(sizeof(PIN_LED) / sizeof(PIN_LED[0]) == sizeof(LECTORES) / sizeof(
 // TIEMPOS
 // =====================================
 
-#define FIRMWARE "2.0.0"
+#define FIRMWARE "2.1.2"
+
+// true = mostrar cada peticion a la API y cuanto tarda (para diagnosticar).
+// Las senales se piden cada 2 s, asi que genera bastantes lineas.
+const bool DEPURAR_RED = true;
 
 const unsigned long TIMEOUT          = 800;    // ms sin leer un tag = fue retirado
 const unsigned long TIEMPO_ARRANQUE  = 3000;   // ms iniciales: solo se hace inventario
@@ -101,7 +119,7 @@ const unsigned long ESPERA_REINTENTO = 2000;   // tras un envio fallido
 const unsigned long ESPERA_WIFI      = 15000;  // entre intentos de reconexion
 
 const uint8_t MAX_TAGS_POR_LECTOR = 4;
-const uint8_t MAX_RECURSOS        = 32;
+const uint8_t MAX_RECURSOS        = 64;
 const uint8_t MAX_AVISTAMIENTOS   = 16;
 const uint8_t TAM_COLA            = 64;   // eventos que esperan si no hay WiFi
 const uint8_t TAM_LOTE            = 8;    // eventos por peticion
@@ -137,6 +155,12 @@ struct Evento {
 };
 
 enum Clase : uint8_t { CL_OK, CL_LUGAR_INCORRECTO, CL_DESCONOCIDO };
+
+enum ResultadoEnvio : uint8_t {
+  ENVIO_OK,          // ACK completo: sacar de la cola
+  ENVIO_REINTENTAR,  // red, servidor, clave...: volver a intentar igual
+  ENVIO_RECHAZADO    // HTTP 400/422: la API nunca lo aceptara tal cual
+};
 
 // =====================================
 // ESTADO
@@ -186,14 +210,17 @@ Clase clasificar(const char* uid, uint8_t lector, char* id, size_t tamId) {
   Clase clase = CL_DESCONOCIDO;
   strlcpy(id, uid, tamId);
 
+  // Un activo aparece una vez por cada lector de su posicion: es correcto
+  // si alguna de sus filas corresponde a este lector.
   xSemaphoreTake(candadoConfig, portMAX_DELAY);
   for (uint8_t i = 0; i < numRecursos; i++) {
     if (strcmp(recursos[i].uid, uid) == 0) {
       strlcpy(id, recursos[i].id, tamId);
-      clase = (recursos[i].lector == 0 || recursos[i].lector == lector)
-                ? CL_OK
-                : CL_LUGAR_INCORRECTO;
-      break;
+      if (recursos[i].lector == 0 || recursos[i].lector == lector) {
+        clase = CL_OK;
+        break;
+      }
+      clase = CL_LUGAR_INCORRECTO;
     }
   }
   xSemaphoreGive(candadoConfig);
@@ -450,24 +477,39 @@ int peticion(const char* metodo, const String& ruta, const char* cuerpo,
   http.addHeader("Accept", "application/json");
   if (cuerpo) http.addHeader("Content-Type", "application/json");
 
+  unsigned long inicio = millis();
+  if (DEPURAR_RED) Serial.printf("[RED] -> %s %s\n", metodo, ruta.c_str());
+
   int codigo = http.sendRequest(metodo, (uint8_t*)cuerpo, cuerpo ? strlen(cuerpo) : 0);
+  bool sinLeer = false;   // quedo un cuerpo sin leer en la conexion
   if (codigo > 0) {
-    String texto = http.getString();
     if (codigo >= 400) {
       Serial.printf("[API] Error HTTP %d en %s\n", codigo, ruta.c_str());
     }
-    if (respuesta) *respuesta = texto;
+    // Una respuesta 204 (latido) no trae cuerpo ni Content-Length. Pedir su
+    // cuerpo con la conexion abierta deja la tarea de red esperando hasta que
+    // el servidor cierre, y mientras tanto no se envian eventos.
+    bool hayCuerpo = codigo != 204 && http.getSize() != 0;
+    if (hayCuerpo && respuesta) {
+      *respuesta = http.getString();
+    } else if (hayCuerpo) {
+      sinLeer = true;
+    }
   } else {
     Serial.printf("[API] Sin respuesta (%s)\n", http.errorToString(codigo).c_str());
   }
   http.end();
-  if (codigo <= 0) clienteTLS.stop();
+  if (DEPURAR_RED) {
+    Serial.printf("[RED] <- %d en %lu ms\n", codigo, (unsigned long)(millis() - inicio));
+  }
+  // Sin leer, esos bytes se mezclarian con la siguiente respuesta: cerrar.
+  if (codigo <= 0 || sinLeer) clienteTLS.stop();
   return codigo;
 }
 
 // Solo un ACK completo del backend permite sacar este lote de la cola.
-bool enviarLote(const Evento* lote, uint8_t cantidad) {
-  if (cantidad == 0 || cantidad > TAM_LOTE) return false;
+ResultadoEnvio enviarLote(const Evento* lote, uint8_t cantidad) {
+  if (cantidad == 0 || cantidad > TAM_LOTE) return ENVIO_REINTENTAR;
 
   JsonDocument documento;
   documento["arranque"] = arranque;
@@ -492,13 +534,20 @@ bool enviarLote(const Evento* lote, uint8_t cantidad) {
   static char cuerpo[2048];
   if (documento.overflowed() || measureJson(documento) >= sizeof(cuerpo)) {
     Serial.println("[API] No se pudo serializar el lote; se conserva para reintentar");
-    return false;
+    return ENVIO_REINTENTAR;
   }
   serializeJson(documento, cuerpo, sizeof(cuerpo));
 
   String respuesta;
-  if (peticion("POST", rutaDispositivo("eventos"), cuerpo, &respuesta) != 202) {
-    return false;
+  int codigo = peticion("POST", rutaDispositivo("eventos"), cuerpo, &respuesta);
+  if (codigo == 400 || codigo == 422) {
+    // La API valida el lote entero antes de guardar nada, asi que un
+    // rechazo no deja eventos a medias. Ej.: canal no registrado en Thesora.
+    Serial.printf("[API] Rechazado: %.160s\n", respuesta.c_str());
+    return ENVIO_RECHAZADO;
+  }
+  if (codigo != 202) {
+    return ENVIO_REINTENTAR;
   }
 
   JsonDocument confirmacion;
@@ -506,18 +555,18 @@ bool enviarLote(const Evento* lote, uint8_t cantidad) {
       || !confirmacion["aceptados"].is<uint32_t>()
       || !confirmacion["duplicados"].is<uint32_t>()) {
     Serial.println("[API] ACK invalido; se conserva el lote");
-    return false;
+    return ENVIO_REINTENTAR;
   }
   uint32_t aceptados = confirmacion["aceptados"];
   uint32_t duplicados = confirmacion["duplicados"];
   if (aceptados > cantidad || duplicados > cantidad || aceptados + duplicados != cantidad) {
     Serial.println("[API] ACK incompleto; se conserva el lote");
-    return false;
+    return ENVIO_REINTENTAR;
   }
 
   Serial.printf("[API] Lote confirmado: %lu nuevo(s), %lu duplicado(s)\n",
                 (unsigned long)aceptados, (unsigned long)duplicados);
-  return true;
+  return ENVIO_OK;
 }
 
 // Descarga el mapeo JSON. Una respuesta invalida no sustituye la copia local.
@@ -550,8 +599,9 @@ bool descargarConfig() {
     for (unsigned int i = 0; i < uid.length() && esHex; i++) {
       esHex = isxdigit((unsigned char)uid[i]);
     }
-    if (!esHex || !codigo[0] || strlen(codigo) >= sizeof(nuevos[0].id)
-        || canal < 1 || canal > NUM_LECTORES) {
+    // Un canal mayor que NUM_LECTORES no invalida el resto: se guarda y
+    // imprimirConfig avisa de que este stand no tiene ese lector.
+    if (!esHex || !codigo[0] || strlen(codigo) >= sizeof(nuevos[0].id) || canal < 1) {
       Serial.println("[API] UID, codigo o canal de configuracion invalido; se conserva la anterior");
       return false;
     }
@@ -616,6 +666,7 @@ void enviarLatido() {
 void tareaRed(void*) {
   Evento  lote[TAM_LOTE];
   uint8_t enLote = 0;
+  bool    unoAUno = false;   // tras un rechazo: enviar de uno en uno
 
   bool conectado = false;
   unsigned long ultimoWifi     = millis();
@@ -668,9 +719,27 @@ void tareaRed(void*) {
         if (enLote > 0) ultimoIntento = millis() - ESPERA_REINTENTO;
       }
 
+      // Si la API rechaza un lote, se reenvia de uno en uno para descartar
+      // solo el evento invalido. Asi no bloquea la cola para siempre.
       if (enLote > 0 && toca(ultimoIntento, ESPERA_REINTENTO)) {
-        if (enviarLote(lote, enLote)) {
-          enLote = 0;
+        uint8_t n = unoAUno ? 1 : enLote;
+        ResultadoEnvio r = enviarLote(lote, n);
+
+        if (r == ENVIO_RECHAZADO && n > 1) {
+          unoAUno = true;
+          ultimoIntento = millis() - ESPERA_REINTENTO;
+        } else if (r != ENVIO_REINTENTAR) {
+          if (r == ENVIO_RECHAZADO) {
+            Serial.printf("[API] Evento %lu descartado (%s, canal %u)\n",
+                          (unsigned long)lote[0].seq, NOMBRE_EVENTO[lote[0].tipo], lote[0].lector);
+          }
+          enLote -= n;
+          memmove(lote, lote + n, enLote * sizeof(Evento));
+          if (enLote == 0) {
+            unoAUno = false;
+          } else {
+            ultimoIntento = millis() - ESPERA_REINTENTO;
+          }
         }
       }
     }
@@ -718,18 +787,24 @@ void setup() {
   Serial.println("================================");
   Serial.println("       INVENTARIO RFID");
   Serial.println("================================");
+  Serial.printf("Firmware %s\n", FIRMWARE);
 
   // INICIAR LOS LECTORES
 
   for (uint8_t i = 0; i < NUM_LECTORES; i++) {
-    LECTORES[i]->PCD_Init();
-    delay(50);
-
-    byte version = (byte)LECTORES[i]->PCD_GetVersion();
-    if (version == 0x00 || version == 0xFF) {
-      Serial.printf("LECTOR %u: NO RESPONDE (revisar cableado)\n", i + 1);
+    // Hasta 3 intentos: un RC522 puede tardar mas que el ESP32 en arrancar.
+    byte version = 0xFF;
+    for (uint8_t intento = 0; intento < 3 && (version == 0x00 || version == 0xFF); intento++) {
+      LECTORES[i]->PCD_Init();
+      delay(50);
+      version = (byte)LECTORES[i]->PCD_GetVersion();
+    }
+    if (version == 0xFF) {
+      Serial.printf("LECTOR %u: NO RESPONDE (0xFF: no llega nada por MISO; revisar MISO, SDA y que este conectado)\n", i + 1);
+    } else if (version == 0x00) {
+      Serial.printf("LECTOR %u: NO RESPONDE (0x00: revisar 3.3V y GND; si estan bien, unir su RST a 3.3V)\n", i + 1);
     } else {
-      Serial.printf("LECTOR %u: listo\n", i + 1);
+      Serial.printf("LECTOR %u: listo (version 0x%02X)\n", i + 1, version);
     }
   }
 
@@ -762,6 +837,7 @@ void setup() {
   // WIFI
 
   clienteTLS.setCACert(API_ROOT_CA);
+  clienteTLS.setHandshakeTimeout(10);   // segundos; por defecto son 120
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // SNTP asincrono para validar TLS
 
   WiFi.mode(WIFI_STA);

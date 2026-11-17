@@ -3,3 +3,6 @@ node_modules/
 
 # Arduino: credenciales locales si se separan del sketch
 ESP32/**/secrets.h
+
+# Arduino: binarios exportados (Sketch -> Export Compiled Binary)
+ESP32/**/build/

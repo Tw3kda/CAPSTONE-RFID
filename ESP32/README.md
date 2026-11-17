@@ -7,7 +7,7 @@
 - Mantiene la lectura de hasta cuatro tags por lector, la detección de retiros a los 800 ms y el inventario inicial de tres segundos.
 - Descarga el mapeo al conectar y cada diez segundos; conserva la última configuración válida en Preferences. Una posición admite varios activos.
 - Consulta las señales LED cada dos segundos y comunica heartbeat cada treinta segundos.
-- Mantiene hasta 64 eventos en RAM, en lotes de ocho, mientras no hay conectividad. Reintenta el mismo lote hasta recibir un ACK completo; no considera 409, 422 o una respuesta JSON incompleta como confirmación.
+- Mantiene hasta 64 eventos en RAM, en lotes de ocho, mientras no hay conectividad. Reintenta el mismo lote hasta recibir un ACK completo; no considera 409 o una respuesta JSON incompleta como confirmación. Si la API rechaza el lote (400/422), lo reenvía de uno en uno y descarta solo el evento inválido, para que no bloquee la cola.
 - La red corre en una tarea separada: TLS, SNTP y solicitudes lentas no bloquean el bucle de lectura.
 - La cola RAM no sobrevive al reinicio; si se llena, informa por Serial que se perdió un evento.
 
@@ -72,20 +72,31 @@ Instala las dos bibliotecas mediante Library Manager o añade `--libraries <dire
 
 1. Un administrador registra el dispositivo `stand-01` en Thesora y conserva su clave, entregada solo al crearlo.
 2. Registra sus lectores con canales **1, 2 y 3**, cada uno asociado a su posición física. Asigna los activos y sus UID RFID a esas posiciones.
-3. En una copia local del sketch configura:
+3. Crea `InventarioRFID/secrets.h`, junto al `.ino`. Está en `.gitignore`, así que no se sube:
 
    ```cpp
-   const char* WIFI_SSID = "TU_WIFI"; // red de 2.4 GHz
-   const char* WIFI_PASS = "TU_CLAVE";
-   const char* API_URL = "https://thesora.redskycol.com/api";
-   const char* DEVICE_API_KEY = "TU_CLAVE_DEL_DISPOSITIVO";
-   const char* DISPOSITIVO_ID = "stand-01";
+   #pragma once
+   #define SECRET_WIFI_SSID      "TU_WIFI"     // red de 2.4 GHz
+   #define SECRET_WIFI_PASS      "TU_CLAVE"
+   #define SECRET_DEVICE_API_KEY "TU_CLAVE_DEL_DISPOSITIVO"
    ```
+
+   Si falta, el sketch compila con valores de ejemplo y avisa con un `#warning`. `API_URL` y `DISPOSITIVO_ID` (`stand-01`) se editan en el `.ino`.
 
 4. Selecciona **ESP32 Dev Module** y el puerto de la placa. Compila y carga únicamente el sketch actual preparado en el directorio de compilación. Si queda en `Connecting...`, mantén BOOT.
 5. Abre Serial Monitor a **115200** baudios. Comprueba WiFi, sincronización de hora, descarga de configuración y lotes confirmados.
 
-No versiones contraseñas WiFi ni claves reales. Los placeholders del archivo versionado deben conservarse; una copia local configurada queda fuera del repositorio. La clave de dispositivo guardada en el único `.env` raíz como `THESORA_DEVICE_API_KEY` se transfiere solo a esa copia local, nunca al archivo versionado.
+No versiones contraseñas WiFi ni claves reales: van solo en `secrets.h`. La clave de dispositivo guardada en el único `.env` raíz como `THESORA_DEVICE_API_KEY` se copia solo a ese archivo. La carpeta `build/` de **Export Compiled Binary** también está ignorada, porque los binarios llevan las claves dentro.
+
+## Leer o escribir un tag
+
+[`EscribirTag/EscribirTag.ino`](EscribirTag/EscribirTag.ino) es una herramienta aparte, sin WiFi, que usa solo el lector 1 (GPIO 5) con el mismo cableado. Muestra el UID de un tag para registrarlo en Thesora (**Administración → Activos → UID RFID**) y puede escribir un texto de hasta 16 caracteres en el tag (por ejemplo `ACT-004`). Si los lectores 2 y 3 siguen conectados, los deja inactivos.
+
+1. Carga `EscribirTag` y abre el Serial Monitor a 115200, con fin de línea **Newline**.
+2. Escribe el texto, pulsa Enter y acerca el tag. Responde `ESCRITO Y VERIFICADO`. Un Enter vacío cancela.
+3. Para volver al stand, carga otra vez `InventarioRFID`.
+
+El stand identifica los activos por el UID, no por el texto, así que escribir es opcional.
 
 ## Contrato del dispositivo
 
@@ -100,7 +111,9 @@ Todas las peticiones incluyen `X-Device-Key`, con una clave propia del ESP32:
 
 `INICIO` envía `canal:null` y `uid:null`; los demás eventos informan el canal y UID. `antiguedad_ms` se calcula nuevamente al retransmitir para conservar la antigüedad de la observación. La deduplicación usa dispositivo, arranque y secuencia.
 
-Un lote solo se retira cuando `aceptados + duplicados` coincide con su cantidad. Ante un error de autenticación o validación se conserva: corrige el registro del dispositivo, lector o datos informados antes de que la cola se llene. Una configuración inválida o mayor a 32 registros conserva la caché anterior.
+Un lote solo se retira cuando `aceptados + duplicados` coincide con su cantidad. Ante un error de autenticación (401) o de red se conserva y se reintenta. Ante un error de validación (400/422) se reenvía evento por evento y se descarta solo el que la API rechaza (por ejemplo, de un canal no registrado), con `[API] Evento n descartado` en el Serial Monitor; el resto de canales sigue funcionando. Una configuración inválida o mayor a 64 registros conserva la caché anterior. Un canal mayor que los lectores del sketch no invalida el mapeo: se muestra como aviso.
+
+Un activo cuya posición tiene varios lectores aparece una vez por canal en el mapeo; el stand lo considera correcto en cualquiera de ellos.
 
 `PRESENTE` representa inventario al encender; no confirma por sí solo una devolución. El backend determina si un retiro o devolución corresponde al préstamo y posición esperados.
 
@@ -116,8 +129,10 @@ El firmware verifica certificado y nombre del servidor con la CA oficial **GTS R
 | Esperando sincronización de hora | Acceso DNS/NTP de la red |
 | Sin respuesta TLS | Fecha, dominio, cadena de certificados y CA configurada |
 | `[API] Error HTTP 401` | Clave propia e identificador del dispositivo |
-| `[API] Error HTTP 422` | Canal registrado y formato de los eventos; el lote sigue pendiente |
-| Configuración inválida | Mapeo, canales 1–3 y límite local de 32 registros |
+| `[API] Error HTTP 422` + `Evento n descartado` | Ese canal no está registrado para el dispositivo en Thesora, o el formato del evento |
+| `LECTOR n: NO RESPONDE (0xFF…)` / `(0x00…)` | 0xFF: MISO, SDA o lector desconectado. 0x00: 3,3 V y GND, o unir `RST` a 3,3 V |
+| Configuración inválida | Mapeo y límite local de 64 registros |
+| `AVISO: … asignado al cajon n, que no existe` | Hay un lector registrado en Thesora con un canal que este sketch no tiene |
 | `TAG DESCONOCIDO` | Registrar el UID real del activo y su posición en Administración |
 
 Si cambia la CA del dominio, actualiza el certificado desde el emisor oficial y recompila. No sustituyas la verificación por `setInsecure()`.
