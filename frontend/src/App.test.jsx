@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App.jsx'
 import { SessionProvider } from './session.jsx'
@@ -85,6 +85,34 @@ it('muestra conflicto sin pasar a retiro y limita administración al rol real', 
   expect(screen.queryByRole('heading', { name: 'Retira el recurso del stand' })).toBeNull()
   await go('/admin/usuarios')
   await screen.findByRole('heading', { name: 'Acceso restringido' })
+})
+
+it.each(['usuario', 'encargado'])('oculta análisis y bloquea sus rutas sin consultas para %s', async (role) => {
+  const { requests } = setup({ role })
+  await login()
+  expect(screen.queryByRole('link', { name: 'Análisis' })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Ver análisis ↗' })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Administración' })).toBeNull()
+  expect(screen.queryByText(`Persona de prueba · ${role}`)).toBeNull()
+  for (const route of ['/analisis', '/analisis/reutilizar']) {
+    await go(route)
+    await screen.findByRole('heading', { name: 'Acceso restringido' })
+  }
+  expect(requests.some(([url]) => url.includes('/analisis/'))).toBe(false)
+})
+
+it('incluye administración en el menú superior de admin y conserva salir en el menú móvil', async () => {
+  setup({ role: 'administrador' })
+  const user = await login()
+  const header = within(screen.getByRole('banner'))
+  const desktop = within(header.getByRole('navigation', { name: 'Principal' }))
+  expect(desktop.getByRole('link', { name: 'Administración' }).getAttribute('href')).toBe('#/admin/usuarios')
+  expect(screen.queryByText('Persona de prueba · administrador')).toBeNull()
+  await user.click(header.getByText('Menú'))
+  const mobile = within(header.getByRole('navigation', { name: 'Menú superior móvil' }))
+  expect(mobile.getByRole('link', { name: 'Administración' }).getAttribute('href')).toBe('#/admin/usuarios')
+  await user.click(mobile.getByRole('button', { name: 'Salir' }))
+  await screen.findByLabelText('Clave')
 })
 
 it('mantiene devolución abierta ante RFID incorrecto y confirma solo el estado devuelto consultado', async () => {

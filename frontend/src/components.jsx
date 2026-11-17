@@ -27,17 +27,24 @@ const NAV = [
 ]
 export function Shell({ activo, sinNav = false, children }) {
   const { user, client, connection } = useSession()
-  const links = NAV.map(([key, to, label, icon]) => <Link key={key} to={to} aria-current={activo === key ? 'page' : undefined}><Icon name={icon} />{label}</Link>)
+  const administrator = user?.rol === 'administrador'
+  const navigation = NAV.filter(([key]) => key !== 'analisis' || administrator)
+  const links = navigation.map(([key, to, label, icon]) => <Link key={key} to={to} aria-current={activo === key ? 'page' : undefined}><Icon name={icon} />{label}</Link>)
+  const adminLink = administrator && <Link to="/admin/usuarios" aria-current={activo === 'admin' ? 'page' : undefined}>Administración</Link>
+  const logout = () => { client.logout(); navigate('/acceso') }
   return <div className={sinNav ? 'shell' : 'shell shell--nav'}>
     <a className="skip-link" href="#contenido" onClick={(event) => { event.preventDefault(); document.getElementById('contenido')?.focus() }}>Saltar al contenido</a>
     <header className="topbar"><div className="topbar__inner">
       <Link to={sinNav ? '/acceso' : '/inicio'} className="topbar__logo" aria-label="Thesora, ir al inicio"><img className="brand-logo" src={logo} alt="Thesora" width="151" height="48" /></Link>
-      {!sinNav && <><nav className="topnav" aria-label="Principal">{links}</nav><button className="btn btn--salir" onClick={() => { client.logout(); navigate('/acceso') }}>Salir</button></>}
+      {!sinNav && <>
+        <nav className="topnav" aria-label="Principal">{links}{adminLink}</nav>
+        <button className="btn btn--salir topbar__logout" onClick={logout}>Salir</button>
+        <details className="topmenu"><summary>Menú</summary><nav aria-label="Menú superior móvil" onClick={(event) => { event.currentTarget.parentElement.open = false }}>{links}{adminLink}<button className="btn" onClick={logout}>Salir</button></nav></details>
+      </>}
     </div></header>
-    {!sinNav && <div className="sessionbar"><div className="container sessionbar__inner"><span>{user.nombre} · {user.rol}</span>{user.rol === 'administrador' && <Link to="/admin/usuarios" className="enlace" aria-current={activo === 'admin' ? 'page' : undefined}>Administración</Link>}</div></div>}
     {!sinNav && connection !== 'conectado' && <div className="connection-notice" role="status">Actualización en vivo {connection === 'conectando' ? 'conectando…' : 'desconectada. Reintentando…'} <button className="enlace" onClick={() => window.dispatchEvent(new Event('thesora:refresh'))}>Actualizar datos</button></div>}
     <main id="contenido" tabIndex="-1">{children}</main>
-    {!sinNav && <nav className="bottomnav" aria-label="Principal móvil">{links}</nav>}
+    {!sinNav && <nav className="bottomnav" aria-label="Principal móvil" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }}>{links}</nav>}
   </div>
 }
 export function PageHeader({ titulo, subtitulo }) {

@@ -23,8 +23,10 @@ export default function App() {
   if (error && error.status !== 401) return <Shell sinNav><PageHeader titulo="No se pudo recuperar la sesión" /><div className="container content"><ErrorNotice error={error} retry={() => window.location.reload()} /><button className="btn btn--secondary" onClick={client.logout}>Volver al acceso</button></div></Shell>
   const asset = path.match(/^\/recurso\/(\d+)(\/ubicacion)?$/)
   if (asset) return asset[2] ? <Ubicacion key={path} id={asset[1]} /> : <Ficha key={path} id={asset[1]} />
+  if ((path.startsWith('/admin') || path.startsWith('/analisis')) && user.rol !== 'administrador') {
+    return <Page titulo="Acceso restringido" subtitulo="Esta sección requiere el rol Administrador."><Link to="/inicio" className="btn btn--primary">Ir al inicio</Link></Page>
+  }
   if (path.startsWith('/admin')) {
-    if (user.rol !== 'administrador') return <Page titulo="Acceso restringido" subtitulo="Esta sección requiere el rol Administrador."><Link to="/inicio" className="btn btn--primary">Ir al inicio</Link></Page>
     return <Admin key={path} section={path.split('/')[2] || 'usuarios'} />
   }
   const id = query.get('id')

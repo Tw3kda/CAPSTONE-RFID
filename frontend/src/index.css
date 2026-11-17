@@ -129,8 +129,8 @@ a {
 }
 
 .topnav a {
-  min-width: 108px;
-  padding: 8px 16px;
+  min-width: 0;
+  padding: 8px 12px;
   border-radius: var(--r-control);
   font-size: 14px;
   line-height: 20px;
@@ -149,6 +149,12 @@ a {
 .bottomnav {
   display: none;
 }
+
+.topmenu { display: none; position: relative; }
+.topmenu summary { cursor: pointer; padding: 8px 12px; border: 1px solid var(--blanco); border-radius: var(--r-control); font-size: 14px; font-weight: 700; }
+.topmenu nav { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; min-width: 210px; padding: 8px; border: 1px solid var(--borde); border-radius: var(--r-control); background: var(--blanco); color: var(--navy); box-shadow: var(--sombra); }
+.topmenu nav a, .topmenu nav button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: var(--r-control); font-size: 14px; text-align: left; }
+.topmenu nav a:hover, .topmenu nav a[aria-current] { background: var(--azul-palido); }
 
 .pagehead {
   background: var(--azul-palido);
@@ -964,6 +970,9 @@ h3 {
     display: none;
   }
 
+  .topbar__logout { display: none; }
+  .topmenu { display: block; }
+
   .btn--salir {
     min-height: 34px;
     min-width: 54px;
@@ -1114,8 +1123,6 @@ button.enlace { border: 0; padding: 0; background: none; color: inherit; cursor:
 .form-field .label { margin: 0; }
 .form-field .field { margin: 0; }
 .form-field .note { font-weight: 400; }
-.sessionbar { border-bottom: 1px solid var(--borde); background: white; font-size: 12px; line-height: 18px; }
-.sessionbar__inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 36px; padding-top: 4px; padding-bottom: 4px; }
 .connection-notice { padding: 8px 16px; text-align: center; background: var(--revision-fondo); color: var(--revision); font-size: 12px; line-height: 18px; }
 .connection-notice button { margin-left: 12px; text-decoration: underline; }
 .search-line { display: flex; gap: 8px; align-items: end; }

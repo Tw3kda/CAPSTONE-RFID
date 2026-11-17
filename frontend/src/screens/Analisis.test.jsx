@@ -14,7 +14,7 @@ it('genera recomendación IA por solicitud explícita, reabre sin llamar y permi
   const asset = { id: 4, nombre: 'Equipo en revisión', codigo: 'ACT-004', categoria_id: 1, categoria: 'Medición', estado: 'en_revision', condicion: 'Revisión pendiente', ultima_revision_at: null, ubicacion: { posicion_id: 1, espacio: 'Lab', gabinete: 'A', estante: '1', codigo: 'P1' } }
   const client = createApi({ storage: null, fetcher: async (url, options) => {
     let body
-    if (url.endsWith('/auth/login')) body = { usuario: { id: 1, nombre: 'Usuario de prueba', rol: 'usuario', activo: true }, tokens: { access_token: 'test', refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 900 } }
+    if (url.endsWith('/auth/login')) body = { usuario: { id: 1, nombre: 'Administrador de prueba', rol: 'administrador', activo: true }, tokens: { access_token: 'test', refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 900 } }
     else if (url.endsWith('/auth/me')) body = client.getSession().usuario
     else if (url.endsWith('/analisis/resumen')) body = { disponibles: 0, prestados: 0, en_revision: 1, uso_semanal: [{ semana: '2026-11-16', movimientos: 0 }], baja_utilizacion: [] }
     else if (url.endsWith('/analisis/reutilizables')) body = []

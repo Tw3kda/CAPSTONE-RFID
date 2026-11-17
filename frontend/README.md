@@ -37,12 +37,14 @@ Los tokens se conservan en `sessionStorage` de la pestaña; la clave no se guard
 - Preparación de préstamo propio o delegado para Encargado/Administrador. La búsqueda del destinatario usa nombre o un identificador registrado; el ID interno solo se usa en el payload.
 - Mis recursos, historial, detalle y consulta de todos los préstamos para los roles autorizados.
 - Retiro pendiente, comprobante, devolución mediante lectura RFID y detección de la posición, comprobante y recuperación ante RFID/posición incorrectos. Cancelar llama al backend. Ningún botón ni temporizador confirma una detección física.
-- Análisis de los últimos 90 días: disponibilidad, retiros semanales, baja utilización y recursos relacionados. Generar recomendación y Generar nueva recomendación solicitan un resultado al backend; el botón separado Mostrar/Ocultar conserva el resultado sin otra solicitud. Si falla una nueva generación, se mantiene el resultado anterior y se ofrece reintentar.
+- Análisis exclusivo de Administradores: disponibilidad, retiros semanales, baja utilización y recursos relacionados de los últimos 90 días. Las rutas y enlaces se restringen antes de montar las vistas; Usuario y Encargado no consultan sus endpoints. Generar recomendación y Generar nueva recomendación solicitan un resultado al backend; el botón separado Mostrar/Ocultar conserva el resultado sin otra solicitud. Si falla una nueva generación, se mantiene el resultado anterior y se ofrece reintentar.
 - Administración: usuarios y activos con alta/edición; categorías, espacios, gabinetes y posiciones con las altas admitidas por contrato; dispositivos con alta y estado reportado; lectores con alta y reasignación de posición.
 
 La credencial de un dispositivo se muestra únicamente en el resultado de su alta y se elimina de la vista al cerrarlo. Los identificadores y claves de usuarios no se recuperan: los campos vacíos de edición conservan el valor, una nueva clave restablece el acceso y retirar QR requiere marcar una acción explícita. Las claves se envían sin recortar sus espacios.
 
 Las rutas usan hash para admitir alojamiento estático. Los enlaces a operaciones conservan el ID del préstamo; al recargar se consulta de nuevo su estado. Las vistas presentan carga, vacío, errores y recuperación. Las notificaciones WebSocket invalidan consultas y, al reconectar, recuperan datos del servidor. Durante la desconexión se muestra un aviso y se puede actualizar manualmente.
+
+El acceso a Administración se integra en la navegación superior, con menú desplegable en móvil y salida de sesión. No se muestra una barra adicional con el nombre y rol de la cuenta.
 
 ## Diseño y accesibilidad
 
