@@ -44,6 +44,8 @@ La credencial de un dispositivo se muestra únicamente en el resultado de su alt
 
 Las rutas usan hash para admitir alojamiento estático. Los enlaces a operaciones conservan el ID del préstamo; al recargar se consulta de nuevo su estado. Las vistas presentan carga, vacío, errores y recuperación. Las notificaciones WebSocket invalidan consultas y, al reconectar, recuperan datos del servidor. Durante la desconexión se muestra un aviso y se puede actualizar manualmente.
 
+La disponibilidad de cada recurso y las acciones de préstamo usan el booleano `disponible` de la API. El estado de negocio se conserva por separado: un retiro físico sin préstamo puede dejar `estado=disponible` y `disponible=false`. La ficha presenta la última observación `presente`; `null` se muestra como ausencia de observación, sin afirmar presencia. Los filtros y contadores consumen los resultados del backend. Un evento `inventario_actualizado` con `detalle.error=retiro_sin_prestamo` muestra un aviso global y enlace al recurso, incluso desde Inicio; las vistas abiertas vuelven a consultar su información. El siguiente evento reemplaza ese aviso. La reposición recupera la disponibilidad únicamente tras la respuesta del servidor. No se crea ningún préstamo desde una notificación.
+
 El acceso a Administración se integra en la navegación superior, con menú desplegable en móvil y salida de sesión. No se muestra una barra adicional con el nombre y rol de la cuenta.
 
 ## Diseño y accesibilidad

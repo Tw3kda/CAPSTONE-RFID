@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Page, LoadState, Field, ErrorNotice } from '../components.jsx'
-import { formatDate, stateLabel, locationText } from '../presentation.js'
+import { formatDate, stateLabel, availabilityLabel, locationText } from '../presentation.js'
 import { Link } from '../router.jsx'
 
 import { useApi, useMutation, useSession } from '../hooks.js'
@@ -69,7 +69,7 @@ function Editor({ section, row, onSaved, onCancel }) {
 function columns(section) {
   switch (section) {
     case 'usuarios': return [['ID registro', (row) => row.id],['Nombre',(row) => row.nombre],['Rol',(row) => row.rol],['Cuenta',(row) => row.activo ? 'Activa' : 'Inactiva']]
-    case 'activos': return [['Código',(row) => row.codigo],['Nombre',(row) => row.nombre],['Categoría',(row) => row.categoria],['Estado',(row) => stateLabel(row.estado)],['Ubicación',(row) => locationText(row.ubicacion)]]
+    case 'activos': return [['Código',(row) => row.codigo],['Nombre',(row) => row.nombre],['Categoría',(row) => row.categoria],['Disponibilidad',(row) => availabilityLabel(row)],['Ubicación',(row) => locationText(row.ubicacion)]]
     case 'posiciones': return [['ID registro',(row) => row.posicion_id],['Espacio',(row) => row.espacio],['Gabinete',(row) => row.gabinete],['Estante',(row) => row.estante],['Posición',(row) => row.codigo]]
     case 'gabinetes': return [['ID registro',(row) => row.id],['Nombre',(row) => row.nombre],['ID espacio',(row) => row.espacio_id]]
     case 'lectores': return [['ID registro',(row) => row.id],['Dispositivo',(row) => row.dispositivo_id],['Canal',(row) => row.canal],['ID posición',(row) => row.posicion_id]]

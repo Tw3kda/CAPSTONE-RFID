@@ -8,7 +8,7 @@ import { createApi } from '../api.js'
 
 afterEach(cleanup)
 const position = { posicion_id: 1, espacio: 'Lab', gabinete: 'A', estante: '2', codigo: '3' }
-const asset = { id: 1, nombre: 'Equipo de prueba', codigo: 'ACT-001', categoria_id: 1, categoria: 'Medición', estado: 'disponible', condicion: 'Operativo', ultima_revision_at: null, ubicacion: position }
+const asset = { id: 1, nombre: 'Equipo de prueba', codigo: 'ACT-001', categoria_id: 1, categoria: 'Medición', estado: 'disponible', presente: true, disponible: true, condicion: 'Operativo', ultima_revision_at: null, ubicacion: position }
 async function setup(section) {
   window.location.hash = `/admin/${section}`
   const requests = []

@@ -1,6 +1,6 @@
 import { Link } from './router.jsx'
 import { navigate } from './navigation.js'
-import { stateLabel } from './presentation.js'
+import { availabilityLabel } from './presentation.js'
 import { useSession } from './hooks.js'
 import logo from './assets/Thesora_Imagotipo_Negativo_Transparente.svg'
 
@@ -26,7 +26,8 @@ const NAV = [
   ['analisis', '/analisis', 'Análisis', 'barras'],
 ]
 export function Shell({ activo, sinNav = false, children }) {
-  const { user, client, connection } = useSession()
+  const { user, client, connection, event } = useSession()
+  const unregisteredRemoval = event?.tipo === 'inventario_actualizado' && event.detalle?.error === 'retiro_sin_prestamo'
   const administrator = user?.rol === 'administrador'
   const navigation = NAV.filter(([key]) => key !== 'analisis' || administrator)
   const links = navigation.map(([key, to, label, icon]) => <Link key={key} to={to} aria-current={activo === key ? 'page' : undefined}><Icon name={icon} />{label}</Link>)
@@ -43,7 +44,7 @@ export function Shell({ activo, sinNav = false, children }) {
       </>}
     </div></header>
     {!sinNav && connection !== 'conectado' && <div className="connection-notice" role="status">Actualización en vivo {connection === 'conectando' ? 'conectando…' : 'desconectada. Reintentando…'} <button className="enlace" onClick={() => window.dispatchEvent(new Event('thesora:refresh'))}>Actualizar datos</button></div>}
-    <main id="contenido" tabIndex="-1">{children}</main>
+    <main id="contenido" tabIndex="-1">{!sinNav && unregisteredRemoval && <div className="container"><div className="notice-warning" role="alert"><strong>Retirado sin préstamo registrado.</strong> El servidor detectó la ausencia de un recurso en su posición asignada. <Link to={`/recurso/${event.activo_id}`} className="enlace">Ver recurso retirado</Link></div></div>}{children}</main>
     {!sinNav && <nav className="bottomnav" aria-label="Principal móvil" style={{ gridTemplateColumns: `repeat(${navigation.length}, minmax(0, 1fr))` }}>{links}</nav>}
   </div>
 }
@@ -54,7 +55,7 @@ export function Page({ activo, titulo, subtitulo, children }) {
   return <Shell activo={activo}><PageHeader titulo={titulo} subtitulo={subtitulo} /><div className="container content">{children}</div></Shell>
 }
 export function ResourceRow({ recurso }) {
-  return <Link to={`/recurso/${recurso.id}`} className="row"><span className="row__top"><span className="row__nombre">{recurso.nombre}</span><Icon name="chevron" size={16} /></span><span className="row__meta">{recurso.categoria} · {recurso.codigo}</span><span className="row__bottom"><span className="row__ubicacion"><Icon name="pin" size={14} />{recurso.ubicacion.gabinete} · Est. {recurso.ubicacion.estante} · {recurso.ubicacion.codigo}</span><span className={recurso.estado === 'en_revision' ? 'estado estado--revision' : 'estado'}>{stateLabel(recurso.estado)}</span></span></Link>
+  return <Link to={`/recurso/${recurso.id}`} className="row"><span className="row__top"><span className="row__nombre">{recurso.nombre}</span><Icon name="chevron" size={16} /></span><span className="row__meta">{recurso.categoria} · {recurso.codigo}</span><span className="row__bottom"><span className="row__ubicacion"><Icon name="pin" size={14} />{recurso.ubicacion.gabinete} · Est. {recurso.ubicacion.estante} · {recurso.ubicacion.codigo}</span><span className={recurso.estado === 'en_revision' ? 'estado estado--revision' : 'estado'}>{availabilityLabel(recurso)}</span></span></Link>
 }
 export function ShelfMap({ mapa, leyenda }) {
   return <section aria-label="Mapa de ubicación"><p className="label">{mapa.asignada.espacio}</p><div className="card shelf"><p className="overline">Gabinete {mapa.asignada.gabinete} / Estante {mapa.asignada.estante}</p><ol className="shelf__slots" style={{ gridTemplateColumns: `repeat(${Math.min(mapa.posiciones_estante.length, 4)}, minmax(0, 1fr))` }}>{mapa.posiciones_estante.map((position) => <li key={position.posicion_id} className={position.posicion_id === mapa.asignada.posicion_id ? 'is-activa' : undefined} aria-current={position.posicion_id === mapa.asignada.posicion_id ? 'location' : undefined}>{position.codigo}</li>)}</ol><p className="shelf__leyenda">{leyenda || `Posición asignada: ${mapa.asignada.codigo}`}</p></div></section>

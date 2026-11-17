@@ -7,7 +7,7 @@ import { SessionProvider } from './session.jsx'
 import { createApi } from './api.js'
 
 const location = { posicion_id: 1, espacio: 'Laboratorio', gabinete: 'A', estante: '2', codigo: 'P3' }
-const asset = { id: 1, nombre: 'Equipo de prueba', codigo: 'ACT-001', categoria_id: 1, categoria: 'Medición', estado: 'disponible', condicion: 'Operativo', ultima_revision_at: null, ubicacion: location }
+const asset = { id: 1, nombre: 'Equipo de prueba', codigo: 'ACT-001', categoria_id: 1, categoria: 'Medición', estado: 'disponible', presente: true, disponible: true, condicion: 'Operativo', ultima_revision_at: null, ubicacion: location }
 const person = { id: 7, nombre: 'Persona de prueba', rol: 'usuario', activo: true }
 const tokens = { access_token: 'test', refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 900 }
 const initialLoan = { id: 11, activo_id: 1, responsable_id: 7, entregado_por_id: 7, activo_nombre: asset.nombre, responsable_nombre: person.nombre, entregado_por_nombre: person.nombre, ubicacion_asignada: location, retiro_at: null, devolucion_esperada_at: '2027-01-15T21:00:00Z', devolucion_at: null, estado: 'pendiente_retiro' }

@@ -1,3 +1,5 @@
 export const formatDate = (value) => value ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Sin registro'
 export const locationText = (value) => value ? `${value.espacio} → Gabinete ${value.gabinete} → Estante ${value.estante} → Posición ${value.codigo}` : 'Sin ubicación registrada'
 export const stateLabel = (state) => ({ disponible: 'Disponible', prestado: 'Prestado', en_revision: 'En revisión', pendiente_retiro: 'Pendiente de retiro', activo: 'Pendiente por devolver', validando_devolucion: 'Validando RFID', esperando_posicion: 'Esperando posición', devuelto: 'Devuelto', cancelado: 'Cancelado' })[state] || state
+export const availabilityLabel = (asset) => asset.disponible ? 'Disponible' : asset.estado === 'disponible' ? 'No disponible' : stateLabel(asset.estado)
+export const presenceLabel = (presence) => presence === null ? 'Sin observación RFID registrada' : presence ? 'Detectado en su posición asignada' : 'No detectado en su posición asignada'
