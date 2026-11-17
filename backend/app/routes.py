@@ -183,6 +183,12 @@ def edit_asset(id: int, data: ActivoParcial, db: Db, user: Admin):
         for key in ("posicion_asignada_id", "rfid_uid", "estado")
     ):
         raise HTTPException(409, "Cannot change physical identity or state during an open loan")
+    if any(
+        key in values and values[key] != getattr(row, key)
+        for key in ("rfid_uid", "posicion_asignada_id")
+    ):
+        # An observation of the old physical identity/location does not establish the new one.
+        row.presente = row.presencia_actualizada_at = None
     for key, value in values.items():
         setattr(row, key, value)
     audit(db, user, "editar_activo", row)

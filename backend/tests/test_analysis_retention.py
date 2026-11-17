@@ -1,32 +1,46 @@
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import text
 
 from app.database import engine
 
 
-def test_analysis_uses_confirmed_withdrawals_not_preparations_and_marks_missing_history(
-    client, headers, recommendation_provider
+@pytest.mark.parametrize(
+    "method,path", [("GET", "resumen"), ("GET", "reutilizables"), ("POST", "recomendacion")]
+)
+def test_all_analysis_requires_administrator(
+    client, headers, manager, admin, recommendation_provider, method, path
 ):
-    summary = client.get("/api/analisis/resumen", headers=headers)
+    url = f"/api/analisis/{path}"
+    for nonadmin in (headers, manager):
+        assert client.request(method, url, headers=nonadmin).status_code == 403
+    assert client.request(method, url).status_code == 401
+    assert client.request(method, url, headers=admin).status_code == 200
+
+
+def test_analysis_uses_confirmed_withdrawals_not_preparations_and_marks_missing_history(
+    client, admin, recommendation_provider
+):
+    summary = client.get("/api/analisis/resumen", headers=admin)
     assert summary.status_code == 200
     data = summary.json()
     assert (data["disponibles"], data["prestados"], data["en_revision"]) == (2, 0, 1)
     assert data["baja_utilizacion"] == [1, 2]
     assert sum(week["movimientos"] for week in data["uso_semanal"]) == 0
-    response = client.post("/api/analisis/recomendacion", headers=headers)
+    response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == 200
     assert response.json()["datos_insuficientes"] is True
     assert response.json()["texto"]
     assert 3 in response.json()["activos_relacionados"]
     for asset_id in response.json()["activos_relacionados"]:
-        assert client.get(f"/api/activos/{asset_id}", headers=headers).status_code == 200
+        assert client.get(f"/api/activos/{asset_id}", headers=admin).status_code == 200
     assert client.get("/api/analisis/resumen").status_code == 401
     assert client.get("/api/analisis/reutilizables").status_code == 401
     assert client.post("/api/analisis/recomendacion").status_code == 401
 
 
-def test_analysis_excludes_old_withdrawals_and_identifies_available_unused_assets(client, headers):
+def test_analysis_excludes_old_withdrawals_and_identifies_available_unused_assets(client, admin):
     with engine.begin() as db:
         db.execute(
             text(
@@ -39,12 +53,10 @@ def test_analysis_excludes_old_withdrawals_and_identifies_available_unused_asset
                 "(2,3,2,NULL,now()+interval '1 day',NULL,'cancelado',now())"
             )
         )
-    data = client.get("/api/analisis/resumen", headers=headers).json()
+    data = client.get("/api/analisis/resumen", headers=admin).json()
     assert sum(week["movimientos"] for week in data["uso_semanal"]) == 1
     assert data["baja_utilizacion"] == [2]
-    assert [a["id"] for a in client.get("/api/analisis/reutilizables", headers=headers).json()] == [
-        2
-    ]
+    assert [a["id"] for a in client.get("/api/analisis/reutilizables", headers=admin).json()] == [2]
 
 
 def test_retention_keeps_recent_records_open_loans_and_linked_events():

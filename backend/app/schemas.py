@@ -116,6 +116,8 @@ class ActivoOut(BaseModel):
     categoria: str
     categoria_id: int
     estado: AssetState
+    presente: bool | None
+    disponible: bool
     condicion: str | None = None
     ultima_revision_at: datetime | None = None
     ubicacion: Ubicacion

@@ -155,7 +155,7 @@ paths:
       parameters:
         - {name: q, in: query, schema: {type: string}, description: Nombre o código}
         - {name: categoria_id, in: query, schema: {type: integer}}
-        - {name: estado, in: query, schema: {type: string, enum: [disponible, prestado, en_revision]}}
+        - {name: estado, in: query, description: 'disponible excluye activos con ausencia física confirmada.', schema: {type: string, enum: [disponible, prestado, en_revision]}}
       responses:
         '200':
           description: Activos encontrados
@@ -185,6 +185,7 @@ paths:
     get:
       tags: [Inventario]
       summary: Consultar ficha, disponibilidad y ubicación del activo
+      description: Usar disponible para habilitar préstamos; estado conserva el estado de negocio y presente informa la evidencia RFID independiente.
       responses:
         '200':
           description: Activo
@@ -327,8 +328,10 @@ paths:
     get:
       tags: [Análisis]
       summary: Resumen de uso por período, disponibilidad y recursos subutilizados
-      description: Ventana móvil de 90 días en UTC. Uso semanal cuenta retiros físicos confirmados (retiro_at), agrupados por lunes; incluye semanas sin movimientos. Baja utilización identifica activos disponibles sin retiros en esa ventana, sin contar preparaciones/cancelaciones.
+      description: Solo Administrador; Usuario y Encargado reciben 403. Ventana móvil de 90 días en UTC. Uso semanal cuenta retiros físicos confirmados (retiro_at), agrupados por lunes; incluye semanas sin movimientos. Baja utilización identifica activos disponibles sin retiros en esa ventana, sin contar preparaciones/cancelaciones.
       responses:
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
         '200':
           description: Indicadores
           content:
@@ -338,8 +341,10 @@ paths:
     get:
       tags: [Análisis]
       summary: Activos que conviene revisar antes de adquirir otros
-      description: Activos disponibles sin retiro físico confirmado en los últimos 90 días. La ausencia de historial no demuestra desuso.
+      description: Solo Administrador; Usuario y Encargado reciben 403. Activos disponibles sin retiro físico confirmado en los últimos 90 días. La ausencia de historial no demuestra desuso.
       responses:
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
         '200':
           description: Activos de baja utilización
           content:
@@ -351,8 +356,10 @@ paths:
     post:
       tags: [Análisis]
       summary: Obtener recomendación contextual de reutilización y mantenimiento
-      description: Una llamada directa a OpenAI Responses API genera texto en español de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). Solo se envían métricas agregadas del período y hasta ocho candidatos seleccionados por backend con nombre, categoría, estado, condición y última revisión; nunca usuarios, identificadores personales, préstamos individuales, RFID, posiciones ni credenciales. La salida JSON se valida y sus IDs deben pertenecer a candidatos enviados. datos_insuficientes se calcula en backend y no puede ser contradicho por el modelo. Sin configuración o ante fallo no se sustituye por una recomendación heurística. Ocultar/mostrar conserva la respuesta en cliente sin nueva llamada; regenerar requiere otro POST explícito.
+      description: Solo Administrador; Usuario y Encargado reciben 403. Una llamada directa a OpenAI Responses API genera texto en español de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). Solo se envían métricas agregadas del período y hasta ocho candidatos seleccionados por backend con nombre, categoría, estado, condición y última revisión; nunca usuarios, identificadores personales, préstamos individuales, RFID, posiciones ni credenciales. La salida JSON se valida y sus IDs deben pertenecer a candidatos enviados. datos_insuficientes se calcula en backend y no puede ser contradicho por el modelo. Sin configuración o ante fallo no se sustituye por una recomendación heurística. Ocultar/mostrar conserva la respuesta en cliente sin nueva llamada; regenerar requiere otro POST explícito.
       responses:
+        '401': {$ref: '#/components/responses/NoAutorizado'}
+        '403': {$ref: '#/components/responses/Prohibido'}
         '200':
           description: Recomendación
           content:
@@ -652,7 +659,7 @@ paths:
     post:
       tags: [Dispositivos]
       summary: Ingresar lote de lecturas RFID
-      description: 'Transacción atómica; deduplicación por (dispositivo_id, arranque, secuencia). PRESENTE del arranque es inventario inicial, no una devolución. El backend valida préstamos y posiciones.'
+      description: 'Transacción atómica; deduplicación por (dispositivo_id, arranque, secuencia). PRESENTE del arranque es inventario inicial, no una devolución. El backend valida préstamos y posiciones. Las observaciones actualizan presencia física independientemente de los préstamos; las antiguas se registran sin revertir evidencia más reciente. Un retiro sin préstamo nunca crea uno ni marca mantenimiento.'
       security: [{deviceKey: []}]
       parameters:
         - {$ref: '#/components/parameters/DispositivoId'}
@@ -707,7 +714,7 @@ paths:
     get:
       tags: [Préstamos]
       summary: Cambios de inventario y de préstamo en vivo (WebSocket)
-      description: 'Handshake WebSocket. Evento JSON: {tipo, activo_id, prestamo_id, estado, detalle}. El cliente usa su sesión autenticada; no se incluyen tokens en la URL.'
+      description: 'Handshake WebSocket. Evento JSON: {tipo, activo_id, prestamo_id, estado, detalle}. El cliente usa su sesión autenticada; no se incluyen tokens en la URL. inventario_actualizado usa prestamo_id y estado null; ante retiro correcto sin préstamo incluye detalle {error: retiro_sin_prestamo, presente: false}; reposición incluye {presente: true}. No incluye UID ni datos personales. Los reintentos deduplicados no vuelven a notificar.'
       responses:
         '101': {description: Switching Protocols}
         '401': {$ref: '#/components/responses/NoAutorizado'}
@@ -814,7 +821,7 @@ components:
           items: {$ref: '#/components/schemas/Ubicacion'}
     Activo:
       type: object
-      required: [id, nombre, codigo, categoria, categoria_id, estado, ubicacion]
+      required: [id, nombre, codigo, categoria, categoria_id, estado, presente, disponible, ubicacion]
       properties:
         id: {type: integer}
         nombre: {type: string}
@@ -822,6 +829,8 @@ components:
         categoria: {type: string}
         categoria_id: {type: integer, description: Referencia para edición administrativa; el UID RFID no se expone en esta respuesta.}
         estado: {type: string, enum: [disponible, prestado, en_revision]}
+        presente: {type: [boolean, 'null'], description: 'Última observación física en la posición asignada; null significa sin evidencia válida. No cierra préstamos.'}
+        disponible: {type: boolean, description: 'Estado de negocio disponible y presente distinto de false. Ausente bloquea nuevos préstamos aunque estado conserve disponible.'}
         condicion: {type: [string, 'null'], description: Descripción de la condición física}
         ultima_revision_at: {type: [string, 'null'], format: date-time}
         ubicacion: {$ref: '#/components/schemas/Ubicacion'}

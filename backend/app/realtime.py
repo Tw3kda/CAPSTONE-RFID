@@ -99,14 +99,14 @@ def notify_loan(loan, detail: dict | None = None):
     )
 
 
-def notify_inventory(asset_id: int | None = None):
+def notify_inventory(asset_id: int | None = None, detail: dict | None = None):
     notify(
         {
             "tipo": "inventario_actualizado",
             "activo_id": asset_id,
             "prestamo_id": None,
             "estado": None,
-            "detalle": {},
+            "detalle": detail or {},
         }
     )
 

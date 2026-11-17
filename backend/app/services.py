@@ -62,6 +62,8 @@ def asset_view(asset: Activo) -> dict:
         "categoria": asset.categoria.nombre,
         "categoria_id": asset.categoria_id,
         "estado": asset.estado,
+        "presente": asset.presente,
+        "disponible": asset.estado == "disponible" and asset.presente is not False,
         "condicion": asset.condicion,
         "ultima_revision_at": asset.ultima_revision_at,
         "ubicacion": location_view(asset.posicion),
@@ -75,6 +77,7 @@ def search_assets(db: Session, q=None, category_id=None, state=None):
             Activo.id,
             Activo.nombre,
             Activo.estado,
+            Activo.presente,
             Activo.condicion,
             Activo.ultima_revision_at,
             Activo.categoria_id,
@@ -110,11 +113,15 @@ def search_assets(db: Session, q=None, category_id=None, state=None):
         query = query.where(Activo.categoria_id == category_id)
     if state is not None:
         query = query.where(Activo.estado == state)
+        if state == "disponible":
+            query = query.where(Activo.presente.is_not(False))
     return [
         {
             "id": row.id,
             "nombre": row.nombre,
             "estado": row.estado,
+            "presente": row.presente,
+            "disponible": row.estado == "disponible" and row.presente is not False,
             "condicion": row.condicion,
             "ultima_revision_at": row.ultima_revision_at,
             "codigo": f"ACT-{row.id:03}",

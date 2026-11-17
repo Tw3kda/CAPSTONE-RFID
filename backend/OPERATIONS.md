@@ -100,6 +100,26 @@ whole batch; retries of committed events do not repeat state changes or notifica
 Only the responsible user and staff receive private loan notifications. Other users
 receive an inventory invalidation without the loan identifier.
 
+Physical presence is independent of the business `estado`. Asset responses expose nullable
+`presente` and derived `disponible`: business state `disponible` and presence other than false.
+Unknown presence preserves existing catalog behavior; it is not proof of a current scan.
+Confirmed absence excludes the asset from the available filter, counts and reuse candidates,
+and new loan preparation returns 409. Presence alone never releases a loan or maintenance.
+A known withdrawal without an open loan broadcasts `inventario_actualizado` with
+`detalle: {error: retiro_sin_prestamo, presente: false}` and no person/loan/UID.
+Restocking broadcasts presence without an error. No persistent alert subsystem is added.
+
+Apply additive migration `d9e8f7a6b543` through the designated migration process before
+running the updated API. It projects the latest valid RFID observation matching the current
+UID and reader/location mapping, ordered by observation time rather than arrival. It does
+not replay loan transitions or create history. Assets without matching evidence remain null;
+changed physical identities need a new scan. Presence has no automatic heartbeat expiry:
+it represents the latest confirmed evidence. Offline batches replay oldest observations first,
+and older evidence cannot undo a more recent observation. Duplicate retries emit nothing.
+
+Analysis, including both GET endpoints and AI generation, requires the administrator role.
+Unauthenticated calls return 401; both ordinary users and managers receive 403.
+
 ## Retention
 
 Preview ordinary expiry before deleting anything:

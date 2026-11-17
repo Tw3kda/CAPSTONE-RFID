@@ -64,6 +64,7 @@ def test_committed_loan_transitions_notify_authorized_websocket_without_reload(
         event(client, device, "DEVUELTO", 2, uid="11223344")
         mismatch = ws.receive_json()
         assert mismatch["prestamo_id"] == lid and mismatch["detalle"]["error"] == "rfid_incorrecto"
+        assert ws.receive_json()["detalle"] == {"presente": True}
         event(client, device, "DEVUELTO", 3, channel=2)
         wrong_position = ws.receive_json()
         assert wrong_position["estado"] == "esperando_posicion"
@@ -122,7 +123,16 @@ def test_wrong_withdrawal_notifies_only_responsible_and_staff_without_confirming
             assert message["prestamo_id"] == lid
             assert message["estado"] == "pendiente_retiro"
             assert message["detalle"] == {"error": "rfid_incorrecto"}
+            if wrong_uid == "11223344":
+                # A different known asset was physically removed without its own loan.
+                alert = socket.receive_json()
+                assert alert["activo_id"] == 2 and alert["prestamo_id"] is None
+                assert alert["detalle"] == {"presente": False, "error": "retiro_sin_prestamo"}
             assert socket.receive_json()["tipo"] == "inventario_actualizado"
+        if wrong_uid == "11223344":
+            alert = other.receive_json()
+            assert alert["activo_id"] == 2 and alert["prestamo_id"] is None
+            assert alert["detalle"]["error"] == "retiro_sin_prestamo"
         assert other.receive_json()["tipo"] == "inventario_actualizado"
         assert client.get(f"/api/prestamos/{lid}", headers=headers).json()["retiro_at"] is None
         with engine.connect() as db:

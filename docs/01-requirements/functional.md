@@ -8,7 +8,7 @@
 
 ## Inventario y ubicación
 
-- **RF-04.** La aplicación debe permitir buscar activos por nombre, código o categoría y filtrar por disponibilidad.
+- **RF-04.** La aplicación debe permitir buscar activos por nombre, código o categoría y filtrar por disponibilidad. Una ausencia física confirmada impide ofrecer o preparar otro préstamo, aunque no exista préstamo registrado; no se inventa responsable, préstamo ni estado de mantenimiento.
 - **RF-05.** La ficha de un activo debe mostrar nombre, categoría, código, disponibilidad, condición y ubicación asignada.
 - **RF-06.** La aplicación debe indicar el espacio, gabinete, estante y posición del activo consultado.
 - **RF-07.** El administrador debe poder gestionar activos, categorías y posiciones asignadas.
@@ -34,13 +34,15 @@
 - **RF-21.** El ESP32 debe encolar eventos durante una desconexión y reintentar su transmisión al recuperar conectividad.
 - **RF-22.** El ESP32 debe comunicar periódicamente su estado de conexión al backend.
 - **RF-23.** El backend debe registrar los eventos RFID, admitir UID desconocidos e impedir el procesamiento duplicado de reintentos.
-- **RF-24.** La aplicación debe reflejar los cambios confirmados por el backend sin requerir recarga manual.
+- **RF-24.** La aplicación debe reflejar los cambios confirmados por el backend sin requerir recarga manual. El retiro sin préstamo emite un aviso de inventario; la reposición recupera la disponibilidad física sin cerrar préstamos que no hayan iniciado devolución. La presencia se conserva separada del estado de negocio y los eventos antiguos no revierten observaciones más recientes.
 
 ## Análisis
 
+Todo el módulo de análisis, incluidos indicadores, recursos reutilizables y recomendación IA, es exclusivo del Administrador. Usuario y Encargado reciben 403 en sus tres endpoints; el acceso ordinario al inventario y a préstamos conserva sus permisos.
+
 - **RF-25.** La aplicación debe mostrar disponibilidad, uso por período y recursos con baja utilización.
 - **RF-26.** La aplicación debe permitir generar mediante OpenAI una recomendación sobre reutilización o mantenimiento basada en métricas agregadas y candidatos del inventario. Debe permitir ocultarla y volver a mostrarla sin otra llamada; regenerar requiere una acción explícita. Los fallos del proveedor deben mostrarse como errores, sin simular una respuesta de IA mediante reglas locales.
-- **RF-27.** Desde la recomendación, el usuario debe poder consultar las fichas de los recursos sugeridos.
+- **RF-27.** Desde la recomendación, el administrador debe poder consultar las fichas de los recursos sugeridos.
 
 El análisis usa una ventana móvil de 90 días en UTC. La baja utilización se refiere a activos
 disponibles sin retiros físicos confirmados en ese período; no se cuentan preparaciones ni

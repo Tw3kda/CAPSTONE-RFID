@@ -96,7 +96,7 @@ def create_loan(data: PrestamoNuevo, db: Db, user: User):
             Prestamo.estado.in_(OPEN_LOAN_STATES),
         )
     )
-    if asset.estado != "disponible" or existing is not None:
+    if asset.estado != "disponible" or asset.presente is False or existing is not None:
         raise HTTPException(409, "Asset is unavailable")
     row = Prestamo(
         **data.model_dump(),

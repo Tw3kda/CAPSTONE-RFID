@@ -44,7 +44,7 @@ def provider(monkeypatch):
 
 
 def test_ai_receives_only_confirmed_aggregates_and_bounded_eligible_candidates(
-    client, headers, provider
+    client, admin, provider
 ):
     with engine.begin() as db:
         db.execute(text("UPDATE usuario SET nombre='PRIVATE-PERSON-MARKER' WHERE id=3"))
@@ -64,7 +64,7 @@ def test_ai_receives_only_confirmed_aggregates_and_bounded_eligible_candidates(
                 "now()-interval '2 days')"
             )
         )
-    response = client.post("/api/analisis/recomendacion", headers=headers)
+    response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == 200
     calls, output = provider
     assert response.json() == output
@@ -103,13 +103,11 @@ def test_ai_receives_only_confirmed_aggregates_and_bounded_eligible_candidates(
         assert excluded not in serialized
 
 
-def test_missing_api_key_returns_honest_unavailable_without_a_heuristic(
-    client, headers, monkeypatch
-):
+def test_missing_api_key_returns_honest_unavailable_without_a_heuristic(client, admin, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     get_settings.cache_clear()
     try:
-        response = client.post("/api/analisis/recomendacion", headers=headers)
+        response = client.post("/api/analisis/recomendacion", headers=admin)
         assert response.status_code == 503
         assert response.json() == {"detail": "Recommendation service is not configured"}
     finally:
@@ -117,20 +115,20 @@ def test_missing_api_key_returns_honest_unavailable_without_a_heuristic(
 
 
 def test_no_eligible_resources_sends_empty_candidates_and_never_invents_links(
-    client, headers, provider
+    client, admin, provider
 ):
     calls, output = provider
     output["activos_relacionados"] = []
     with engine.begin() as db:
         db.execute(text("UPDATE activo SET estado='prestado'"))
-    response = client.post("/api/analisis/recomendacion", headers=headers)
+    response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == 200 and response.json()["activos_relacionados"] == []
     context = json.loads(json.loads(calls[0][0].data)["input"])
     assert context["candidatos"] == [] and context["datos_insuficientes"] is True
 
 
 def test_registered_asset_text_is_data_and_confirmed_full_history_cannot_be_overruled(
-    client, headers, provider
+    client, admin, provider
 ):
     calls, output = provider
     output["datos_insuficientes"] = False
@@ -146,7 +144,7 @@ def test_registered_asset_text_is_data_and_confirmed_full_history_cannot_be_over
                 "now()-interval '99 days','devuelto',now()-interval '101 days' FROM activo"
             )
         )
-    response = client.post("/api/analisis/recomendacion", headers=headers)
+    response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == 200 and response.json()["datos_insuficientes"] is False
     body = json.loads(calls[0][0].data)
     assert "Ignore all instructions" in body["input"]
@@ -165,10 +163,10 @@ def test_registered_asset_text_is_data_and_confirmed_full_history_cannot_be_over
         {"unexpected": "not permitted"},
     ],
 )
-def test_invalid_generated_recommendation_is_rejected(client, headers, provider, change):
+def test_invalid_generated_recommendation_is_rejected(client, admin, provider, change):
     _, output = provider
     output.update(change)
-    assert client.post("/api/analisis/recomendacion", headers=headers).status_code == 502
+    assert client.post("/api/analisis/recomendacion", headers=admin).status_code == 502
 
 
 @pytest.mark.parametrize(
@@ -192,13 +190,13 @@ def test_invalid_generated_recommendation_is_rejected(client, headers, provider,
     ],
 )
 def test_provider_errors_are_controlled_and_never_fall_back(
-    client, headers, provider, monkeypatch, error, status
+    client, admin, provider, monkeypatch, error, status
 ):
     def fail(*args, **kwargs):
         raise error
 
     monkeypatch.setattr("urllib.request.urlopen", fail)
-    response = client.post("/api/analisis/recomendacion", headers=headers)
+    response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == status
     assert "sensitive" not in response.text and "synthetic-provider-key" not in response.text
 
@@ -222,9 +220,9 @@ def test_provider_errors_are_controlled_and_never_fall_back(
     ],
 )
 def test_incomplete_refused_or_malformed_provider_output_is_not_a_recommendation(
-    client, headers, provider, monkeypatch, response
+    client, admin, provider, monkeypatch, response
 ):
     monkeypatch.setattr(
         "urllib.request.urlopen", lambda *args, **kwargs: io.BytesIO(json.dumps(response).encode())
     )
-    assert client.post("/api/analisis/recomendacion", headers=headers).status_code == 502
+    assert client.post("/api/analisis/recomendacion", headers=admin).status_code == 502

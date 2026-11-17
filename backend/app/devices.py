@@ -20,7 +20,7 @@ from app.models import (
     Lector,
     Prestamo,
 )
-from app.realtime import notify_loan
+from app.realtime import notify_inventory, notify_loan
 from app.schemas import UID, Input, Nonempty
 from app.security import Admin, Db, User
 from app.services import audit, get_or_404, location_view, save
@@ -221,7 +221,7 @@ def heartbeat(data: Heartbeat, db: Db, device: Device):
     return Response(status_code=204)
 
 
-def process_observation(db, device, boot, observation, reader, received_at):
+def process_observation(db, device, boot, observation, reader, received_at, inventory_changes):
     uid = observation.uid.upper() if observation.uid else None
     asset_id = db.scalar(select(Activo.id).where(Activo.rfid_uid == uid)) if uid else None
     asset = locked_asset(db, asset_id) if asset_id is not None else None
@@ -262,7 +262,17 @@ def process_observation(db, device, boot, observation, reader, received_at):
         recibido_at=received_at,
     )
     db.add(row)
+    presence_changed = False
+    if asset and observation.tipo != "INICIO":
+        if asset.presencia_actualizada_at and occurred_at < asset.presencia_actualizada_at:
+            # Persist late offline observations without reversing newer physical/business state.
+            return []
+        present = observation.tipo != "RETIRADO" and correct_position
+        presence_changed = asset.presente is not present
+        asset.presente, asset.presencia_actualizada_at = present, occurred_at
     if loan and occurred_at < loan.operacion_iniciada_at:
+        if presence_changed:
+            inventory_changes.append((asset.id, {"presente": asset.presente}))
         return []
     notifications = []
     withdrawal_confirmed = False
@@ -310,6 +320,12 @@ def process_observation(db, device, boot, observation, reader, received_at):
             )
         )
         notifications.extend((pending, {"error": "rfid_incorrecto"}) for pending in waiting)
+    loan_notified = loan is not None and any(pending.id == loan.id for pending, _ in notifications)
+    if presence_changed and not loan_notified:
+        detail = {"presente": asset.presente}
+        if observation.tipo == "RETIRADO" and correct_position and loan is None:
+            detail["error"] = "retiro_sin_prestamo"
+        inventory_changes.append((asset.id, detail))
     return notifications
 
 
@@ -335,7 +351,9 @@ def ingest(data: Lote, db: Db, device: Device):
             raise HTTPException(422, "Observation time is outside the supported range") from None
     accepted = duplicates = 0
     notifications = []
-    for observation in data.eventos:
+    inventory_changes = []
+    # Offline batches may arrive shuffled. Replay oldest first with sequence as tie breaker.
+    for observation in sorted(data.eventos, key=lambda item: (-item.antiguedad_ms, item.secuencia)):
         exists = db.scalar(
             select(Evento.id).where(
                 Evento.dispositivo_id == device.id,
@@ -354,6 +372,7 @@ def ingest(data: Lote, db: Db, device: Device):
                 observation,
                 readers.get(observation.canal),
                 now,
+                inventory_changes,
             )
         )
         db.flush()
@@ -361,4 +380,6 @@ def ingest(data: Lote, db: Db, device: Device):
     save(db)
     for loan, detail in notifications:
         notify_loan(loan, detail)
+    for asset_id, detail in inventory_changes:
+        notify_inventory(asset_id, detail)
     return {"aceptados": accepted, "duplicados": duplicates}

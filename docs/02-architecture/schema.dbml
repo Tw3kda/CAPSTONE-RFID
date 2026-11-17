@@ -64,6 +64,8 @@ Table activo {
   condicion varchar(100)
   ultima_revision_at timestamptz
   estado varchar(30) [not null, note: 'disponible | prestado | en_revision']
+  presente boolean [note: 'Última evidencia física en posición asignada; null sin observación válida. Disponibilidad efectiva: estado disponible y presente distinto de false.']
+  presencia_actualizada_at timestamptz [note: 'Momento de observación, no de recepción; evita revertir presencia con eventos offline antiguos.']
 }
 
 Table prestamo {

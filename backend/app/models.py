@@ -101,6 +101,8 @@ class Activo(Base):
     condicion: Mapped[str | None] = mapped_column(String(100))
     ultima_revision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     estado: Mapped[str] = mapped_column(String(30))
+    presente: Mapped[bool | None] = mapped_column(Boolean)
+    presencia_actualizada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     categoria: Mapped[Categoria] = relationship(lazy="joined")
     posicion: Mapped[Posicion] = relationship(lazy="joined")
 

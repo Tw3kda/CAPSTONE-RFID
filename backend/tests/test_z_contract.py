@@ -161,9 +161,9 @@ def test_contract_success_responses_match_all_http_operations(
     checked("POST", f"/prestamos/{loan['id']}/devolucion", status=202)
     checked("POST", f"/prestamos/{loan['id']}/cancelar-operacion")
     checked("GET", "/activos/1/historial")
-    checked("GET", "/analisis/resumen")
-    checked("GET", "/analisis/reutilizables")
-    checked("POST", "/analisis/recomendacion")
+    checked("GET", "/analisis/resumen", auth=admin)
+    checked("GET", "/analisis/reutilizables", auth=admin)
+    checked("POST", "/analisis/recomendacion", auth=admin)
     expected = {
         (method, path)
         for path, item in source["paths"].items()

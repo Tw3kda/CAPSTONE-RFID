@@ -7,7 +7,7 @@ from sqlalchemy import exists, func, select
 from app.models import Activo, Evento, Prestamo
 from app.recommendations import Recomendacion, generate_recommendation
 from app.schemas import ActivoOut
-from app.security import Db, User
+from app.security import Admin, Db
 from app.services import asset_view
 
 analysis = APIRouter(prefix="/api/analisis", tags=["Análisis"])
@@ -38,6 +38,7 @@ def reusable_assets(db, now):
         select(Activo)
         .where(
             Activo.estado == "disponible",
+            Activo.presente.is_not(False),
             ~recent_withdrawal,
         )
         .order_by(Activo.id)
@@ -46,7 +47,13 @@ def reusable_assets(db, now):
 
 def analysis_summary(db, now):
     cutoff = now - timedelta(days=90)
-    counts = dict(db.execute(select(Activo.estado, func.count()).group_by(Activo.estado)).all())
+    counts = dict(
+        db.execute(
+            select(Activo.estado, func.count())
+            .where((Activo.estado != "disponible") | Activo.presente.is_not(False))
+            .group_by(Activo.estado)
+        ).all()
+    )
     week_expression = func.date_trunc("week", Prestamo.retiro_at)
     weekly = dict(
         db.execute(
@@ -78,12 +85,12 @@ def analysis_summary(db, now):
 
 
 @analysis.get("/resumen", response_model=ResumenAnalisis)
-def summary(db: Db, user: User):
+def summary(db: Db, user: Admin):
     return analysis_summary(db, datetime.now(UTC))
 
 
 @analysis.get("/reutilizables", response_model=list[ActivoOut])
-def reusable(db: Db, user: User):
+def reusable(db: Db, user: Admin):
     return [asset_view(a) for a in reusable_assets(db, datetime.now(UTC))]
 
 
@@ -141,7 +148,7 @@ def recommendation_context(db):
 
 
 @analysis.post("/recomendacion", response_model=Recomendacion)
-def recommendation(db: Db, user: User):
+def recommendation(db: Db, user: Admin):
     context = recommendation_context(db)
     # Release the read transaction/connection before waiting on the external provider.
     db.rollback()
