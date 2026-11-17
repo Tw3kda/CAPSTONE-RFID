@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import App from '../App.jsx'
 import { SessionProvider } from '../session.jsx'
 import { createApi } from '../api.js'
+import matrix from '../test-fixtures/qr-symbol.json'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -67,6 +68,9 @@ it('abre la cámara una vez desde Escanear QR, enfoca el rechazo y libera el str
     detect = async () => [{ rawValue: 'E000000000123456ABCDEF' }]
   })
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(640)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(480)
   const scroll = vi.fn()
   Element.prototype.scrollIntoView = scroll
   const { user, requests } = setup('/acceso', { rejectQr: true })
@@ -80,6 +84,32 @@ it('abre la cámara una vez desde Escanear QR, enfoca el rechazo y libera el str
   expect(track.stop).toHaveBeenCalledTimes(1)
   await user.click(screen.getByRole('link', { name: 'Usar ID universitario' }))
   await screen.findByLabelText('Clave')
+})
+
+it('solicita permiso y autentica un QR real en un navegador sin BarcodeDetector', async () => {
+  const stop = vi.fn()
+  const getUserMedia = vi.fn(async () => ({ getTracks: () => [{ stop, readyState: 'live' }] }))
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+  vi.stubGlobal('BarcodeDetector', undefined)
+  const size = matrix.length * 4
+  const data = new Uint8ClampedArray(size * size * 4)
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const index = (y * size + x) * 4
+    const color = matrix[Math.floor(y / 4)][Math.floor(x / 4)] === '1' ? 0 : 255
+    data.set([color, color, color, 255], index)
+  }
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn(), getImageData: () => ({ data }) })
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(size)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(size)
+  const { user, requests } = setup()
+  expect(getUserMedia).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Escanear QR' }))
+  await screen.findByRole('heading', { name: 'Hola, Cuenta de prueba' })
+  expect(getUserMedia).toHaveBeenCalledTimes(1)
+  expect(requests).toEqual([{ metodo: 'qr', credencial: 'E000000000123456ABCDEF' }])
+  expect(stop).toHaveBeenCalledTimes(1)
 })
 
 it('explica un permiso denegado y permite continuar con ID sin volver a pedirlo automáticamente', async () => {

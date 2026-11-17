@@ -4,6 +4,7 @@ import { Link } from '../router.jsx'
 import { navigate } from '../navigation.js'
 import { useSession } from '../hooks.js'
 import { prepareQrCamera, retainQrCamera, releaseQrCamera, stopQrCamera, getQrCameraError, hasQrCamera } from '../qr-camera.js'
+import { createQrDecoder } from '../qr-decoder.js'
 
 function useErrorFocus(error) {
   const target = useRef(null)
@@ -107,16 +108,22 @@ export function AccesoQR() {
       try {
         await element.play()
         if (!active) return
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+        const decode = await createQrDecoder()
+        if (!active) return
         async function scan() {
-          if (!active) return
+          if (!active || !hasQrCamera()) return
           try {
-            const codes = await detector.detect(element)
-            if (codes[0]?.rawValue) {
-              if (active) await identify(codes[0].rawValue)
+            const value = await decode(element)
+            if (value) {
+              if (active && hasQrCamera()) await identify(value)
               return
             }
-          } catch { /* A video frame may not yet be ready. */ }
+          } catch (err) {
+            if (err.name !== 'InvalidStateError') {
+              if (active) { stopQrCamera(); setRunning(false); setError(err) }
+              return
+            }
+          }
           if (active) timer = setTimeout(scan, 250)
         }
         scan()

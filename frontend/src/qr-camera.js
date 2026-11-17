@@ -2,29 +2,44 @@ let stream = null
 let pending = null
 let readers = 0
 let cameraError = null
+let generation = 0
 
 export function prepareQrCamera() {
-  if (stream?.getTracks().some((track) => track.readyState !== 'ended')) return Promise.resolve(stream)
+  if (hasQrCamera()) return Promise.resolve(stream)
   if (pending) return pending
   cameraError = null
+  const requestedGeneration = generation
   pending = (async () => {
-    if (!navigator.mediaDevices?.getUserMedia || !globalThis.BarcodeDetector
-      || !(await globalThis.BarcodeDetector.getSupportedFormats()).includes('qr_code')) {
-      throw new Error('La lectura de QR con cámara no está disponible en este navegador. Usa tu ID universitario o ingresa el contenido del QR.')
+    if (globalThis.isSecureContext === false) {
+      throw new Error('La cámara requiere HTTPS. Abre el enlace seguro de Thesora o usa tu ID universitario.')
     }
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Este navegador no ofrece acceso a la cámara. Abre Thesora directamente en Chrome o Safari, fuera de otras aplicaciones, o usa tu ID universitario.')
+    }
+    // Camera consent belongs to the click, independently of the QR decoder.
+    const media = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    if (generation !== requestedGeneration) {
+      media.getTracks().forEach((track) => track.stop())
+      throw new DOMException('Se canceló la apertura de la cámara. Pulsa Reintentar para abrirla.', 'AbortError')
+    }
+    stream = media
     return stream
   })().catch((error) => {
-    cameraError = error.name === 'NotAllowedError'
-      ? new Error('No se permitió el acceso a la cámara. Revisa el permiso o usa tu ID universitario.')
-      : error
+    const messages = {
+      NotAllowedError: 'No se permitió el acceso a la cámara. Revisa el permiso del sitio y del navegador. Si abriste el enlace dentro de otra aplicación, ábrelo directamente en Chrome o Safari, o usa tu ID universitario.',
+      SecurityError: 'El navegador bloqueó la cámara. Abre el enlace HTTPS directamente en Chrome o Safari y revisa sus permisos, o usa tu ID universitario.',
+      NotFoundError: 'No se encontró una cámara disponible. Conecta o habilita una cámara, o usa tu ID universitario.',
+      NotReadableError: 'No se pudo acceder a la cámara. Cierra otras aplicaciones que puedan estar usándola y reintenta, o usa tu ID universitario.',
+      OverconstrainedError: 'No se pudo iniciar una cámara compatible. Abre el enlace directamente en Chrome o Safari, o usa tu ID universitario.',
+    }
+    cameraError = messages[error.name] ? new Error(messages[error.name]) : error
     throw cameraError
   }).finally(() => { pending = null })
   return pending
 }
 
 export const getQrCameraError = () => cameraError
-export const hasQrCamera = () => stream !== null
+export const hasQrCamera = () => Boolean(stream?.getTracks().some((track) => track.readyState !== 'ended'))
 
 export function retainQrCamera() {
   if (stream) readers++
@@ -38,6 +53,7 @@ export function releaseQrCamera() {
 }
 
 export function stopQrCamera() {
+  generation++
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
 }
