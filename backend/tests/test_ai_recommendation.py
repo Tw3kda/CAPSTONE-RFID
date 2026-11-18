@@ -83,9 +83,20 @@ def test_ai_receives_only_confirmed_aggregates_and_bounded_eligible_candidates(
     assert context["datos_insuficientes"] is True
     assert 1 <= len(context["candidatos"]) <= 8
     assert {1, 3} <= {item["id"] for item in context["candidatos"]}
-    assert 2 not in {item["id"] for item in context["candidatos"]}  # Recent confirmed use.
+    assert 2 in {item["id"] for item in context["candidatos"]}  # Demand remains useful evidence.
     assert all(
-        set(item) == {"id", "nombre", "categoria", "estado", "condicion", "ultima_revision_at"}
+        set(item)
+        == {
+            "id",
+            "nombre",
+            "categoria",
+            "estado",
+            "condicion",
+            "ultima_revision_at",
+            "disponible",
+            "sin_retiros_90d",
+            "uso",
+        }
         for item in context["candidatos"]
     )
     serialized = request.data.decode()
@@ -120,7 +131,7 @@ def test_no_eligible_resources_sends_empty_candidates_and_never_invents_links(
     calls, output = provider
     output["activos_relacionados"] = []
     with engine.begin() as db:
-        db.execute(text("UPDATE activo SET estado='prestado'"))
+        db.execute(text("DELETE FROM activo"))
     response = client.post("/api/analisis/recomendacion", headers=admin)
     assert response.status_code == 200 and response.json()["activos_relacionados"] == []
     context = json.loads(json.loads(calls[0][0].data)["input"])
@@ -156,6 +167,7 @@ def test_registered_asset_text_is_data_and_confirmed_full_history_cannot_be_over
     "change",
     [
         {"activos_relacionados": [999]},
+        {"activos_relacionados": []},
         {"activos_relacionados": [1, 1]},
         {"datos_insuficientes": False},
         {"texto": ""},

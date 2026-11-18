@@ -151,16 +151,39 @@ Compose injects these variables only into backend, not migration, database or fr
 Recreate backend after changing its environment.
 
 The input contains 90-day availability/weekly confirmed-withdrawal aggregates and at
-most eight candidates: up to four available low-use assets and four in review. Each
-candidate has only ID, name, category, state, condition and last review time. No users,
-personal identifiers, individual loans, RFID UIDs, positions or device credentials are
-sent. Free text is data in a separate JSON input, never instructions. The backend
-selects candidates and computes the insufficient-history flag; AI cannot change states.
+most eight resources. Selection includes up to two in review, two available low-use
+resources and four with the most confirmed withdrawals, deduplicating and filling remaining
+slots in withdrawal-count order (ID breaks ties). A resource need not have low use to
+provide useful evidence. Each includes ID, name, category, business state, effective
+availability, low-use qualification, condition, last review time and aggregate usage.
+Usage counts withdrawals in 90 days and two consecutive full 30-day windows. Duration
+median/maximum (hours, rounded to two decimals) and sample count use only completed,
+nonnegative returns for withdrawals in the 90-day window; incomplete/future returns do
+not contribute. No observed withdrawals or completed returns means zero counts or null
+durations, not a prediction. These counts describe recorded usage, not unmet demand.
 
-The Spanish instructions request reuse before purchasing and technical review before
-replacement, without inventing statistics, guaranteeing compatibility or predicting
-failures. A strict JSON schema and Pydantic validate the existing response format.
-Returned IDs must be a unique subset of candidates, and the history flag must agree.
+No users, personal identifiers, individual loans, deadlines, RFID UIDs, positions or device
+credentials are sent. Free text is data in a separate JSON input, never instructions.
+The backend selects resources and computes the insufficient-history flag; AI cannot
+change states. The low-use criterion remains no withdrawals in 90 days and availability.
+
+The Spanish instructions request up to three prioritized actions supported by a named
+resource and numerical evidence, rather than reciting all indicators. They distinguish
+facts from proposals, avoid suggesting nonexistent low-use resources and tie review to
+the recorded condition. Durations are not called lateness: deadlines are not supplied.
+No invented statistics, costs, savings, compatibility guarantees or fault predictions are
+allowed. A strict JSON schema and Pydantic validate the unchanged three-field response.
+Returned IDs must be a unique, nonempty subset when resources exist, and the history flag
+must agree. Schema validation does not establish every prose claim as fact; representative
+checks and the restricted prompt/context reduce that risk without a second AI pipeline.
+
+Authorized historical loads are append-only operations, never live RFID replays. A seed
+marker plus an advisory transaction lock prevents replaying an operator's load; existing
+records, active loans and current physical/business state must be preserved. Those audit
+markers are internal operator bookkeeping, not recommendation inputs or user-facing
+qualifications. All recorded usage is analyzed consistently; no audit labels, load markers
+or special data modes are sent to the model. Event validation metadata is not exposed by
+the public asset history response. Historical ingestion must not replay physical state.
 
 One explicit generation has a 20-second timeout, `store=false`, low reasoning effort
 and at most 1200 output tokens. There are no tools, automatic retries, background jobs,
@@ -171,9 +194,11 @@ the current result does not generate again; regenerating requires an explicit PO
 
 The model ID was checked against the actual `/v1/models` catalog for the configured
 key. Deterministic tests replace only external HTTPS, retaining routing and PostgreSQL.
-A live generation check must use synthetic isolated inventory, never personal QR/IDs.
+A live generation check may use authorized, sanitized inventory aggregates; never personal
+QR/IDs or individual borrower records. It does not activate local code in production.
 
 Primary integration references: [Responses and instructions](https://developers.openai.com/api/docs/guides/text),
+[prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering),
 [structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
 [API errors](https://developers.openai.com/api/docs/guides/error-codes),
 [server-side keys](https://developers.openai.com/api/docs/guides/production-best-practices),

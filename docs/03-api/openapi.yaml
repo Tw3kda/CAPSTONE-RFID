@@ -356,7 +356,24 @@ paths:
     post:
       tags: [Análisis]
       summary: Obtener recomendación contextual de reutilización y mantenimiento
-      description: Solo Administrador; Usuario y Encargado reciben 403. Una llamada directa a OpenAI Responses API genera texto en español de reutilización (disponibles sin retiros en 90 días) y mantenimiento (en_revision). Solo se envían métricas agregadas del período y hasta ocho candidatos seleccionados por backend con nombre, categoría, estado, condición y última revisión; nunca usuarios, identificadores personales, préstamos individuales, RFID, posiciones ni credenciales. La salida JSON se valida y sus IDs deben pertenecer a candidatos enviados. datos_insuficientes se calcula en backend y no puede ser contradicho por el modelo. Sin configuración o ante fallo no se sustituye por una recomendación heurística. Ocultar/mostrar conserva la respuesta en cliente sin nueva llamada; regenerar requiere otro POST explícito.
+      description: >-
+        Solo Administrador; Usuario y Encargado reciben 403. Una llamada directa a OpenAI
+        Responses API genera acciones priorizadas en español con evidencia numérica por
+        recurso, sin limitarse a repetir indicadores. El backend selecciona hasta ocho
+        recursos por uso confirmado, baja utilización o revisión; no exige ausencia de uso.
+        Envía nombre, categoría, estado, disponibilidad, condición y última revisión junto
+        a retiros agregados de 90 días y dos ventanas consecutivas de 30 días, y mediana,
+        máximo y tamaño de muestra de duraciones de préstamos finalizados válidos de la
+        cohorte de retiros de 90 días. Todo el historial se analiza con el mismo criterio;
+        los marcadores internos de carga no se envían al modelo ni a la respuesta.
+        Nunca envía usuarios, identificadores personales, préstamos
+        individuales, plazos, RFID, posiciones ni credenciales; una duración larga no se
+        presenta como retraso. La salida JSON conserva texto, activos_relacionados y
+        datos_insuficientes. Los IDs deben ser un subconjunto único no vacío de los recursos
+        enviados cuando los haya; la insuficiencia se calcula en backend. La validación de
+        esquema no garantiza la veracidad de cada frase. Sin configuración o ante fallo no
+        hay recomendación heurística. Ocultar/mostrar conserva la respuesta en cliente sin
+        otra llamada; regenerar requiere otro POST explícito.
       responses:
         '401': {$ref: '#/components/responses/NoAutorizado'}
         '403': {$ref: '#/components/responses/Prohibido'}

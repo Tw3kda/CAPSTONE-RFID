@@ -94,6 +94,51 @@ def reusable(db: Db, user: Admin):
     return [asset_view(a) for a in reusable_assets(db, datetime.now(UTC))]
 
 
+def resource_usage(db, now):
+    """Aggregate confirmed withdrawals; no person, individual loan or deadline leaves SQL."""
+    duration = func.extract("epoch", Prestamo.devolucion_at - Prestamo.retiro_at) / 3600
+    completed = (
+        (Prestamo.estado == "devuelto")
+        & (Prestamo.devolucion_at >= Prestamo.retiro_at)
+        & (Prestamo.devolucion_at <= now)
+    )
+    rows = db.execute(
+        select(
+            Prestamo.activo_id,
+            func.count().label("retiros_90d"),
+            func.count()
+            .filter(Prestamo.retiro_at >= now - timedelta(days=30))
+            .label("retiros_30d"),
+            func.count()
+            .filter(
+                (Prestamo.retiro_at >= now - timedelta(days=60))
+                & (Prestamo.retiro_at < now - timedelta(days=30))
+            )
+            .label("retiros_30d_anteriores"),
+            func.count().filter(completed).label("devoluciones_90d"),
+            func.percentile_cont(0.5).within_group(duration).filter(completed).label("mediana"),
+            func.max(duration).filter(completed).label("maxima"),
+        )
+        .where(Prestamo.retiro_at >= now - timedelta(days=90), Prestamo.retiro_at <= now)
+        .group_by(Prestamo.activo_id)
+    )
+    return {
+        row.activo_id: {
+            "retiros_90d": row.retiros_90d,
+            "retiros_30d": row.retiros_30d,
+            "retiros_30d_anteriores": row.retiros_30d_anteriores,
+            "devoluciones_90d": row.devoluciones_90d,
+            "duracion_mediana_horas": round(float(row.mediana), 2)
+            if row.mediana is not None
+            else None,
+            "duracion_maxima_horas": round(float(row.maxima), 2)
+            if row.maxima is not None
+            else None,
+        }
+        for row in rows
+    }
+
+
 def recommendation_context(db):
     now = datetime.now(UTC)
     cutoff = now - timedelta(days=90)
@@ -101,8 +146,18 @@ def recommendation_context(db):
     maintenance = db.scalars(
         select(Activo).where(Activo.estado == "en_revision").order_by(Activo.id)
     ).all()
-    # Keep both reuse and maintenance represented while bounding external disclosure/cost.
-    candidates = sorted(unused[:4] + maintenance[:4], key=lambda asset: asset.id)
+    usage = resource_usage(db, now)
+    assets = db.scalars(select(Activo).order_by(Activo.id)).all()
+    ranked = sorted(
+        assets, key=lambda asset: (-usage.get(asset.id, {}).get("retiros_90d", 0), asset.id)
+    )
+    # Represent maintenance, low use and observed demand; the bound is disclosure, not a score.
+    chosen = {asset.id: asset for asset in maintenance[:2] + unused[:2] + ranked[:4]}
+    for asset in ranked:
+        if len(chosen) >= 8:
+            break
+        chosen.setdefault(asset.id, asset)
+    candidates = sorted(chosen.values(), key=lambda asset: asset.id)
     related = [asset.id for asset in candidates]
     # An observation older than the window is evidence of historical tracking, not a prediction.
     observed = set(
@@ -137,6 +192,19 @@ def recommendation_context(db):
                 "nombre": asset.nombre,
                 "categoria": asset.categoria.nombre,
                 "estado": asset.estado,
+                "disponible": asset.estado == "disponible" and asset.presente is not False,
+                "sin_retiros_90d": asset in unused,
+                "uso": usage.get(
+                    asset.id,
+                    {
+                        "retiros_90d": 0,
+                        "retiros_30d": 0,
+                        "retiros_30d_anteriores": 0,
+                        "devoluciones_90d": 0,
+                        "duracion_mediana_horas": None,
+                        "duracion_maxima_horas": None,
+                    },
+                ),
                 "condicion": asset.condicion,
                 "ultima_revision_at": asset.ultima_revision_at.isoformat()
                 if asset.ultima_revision_at

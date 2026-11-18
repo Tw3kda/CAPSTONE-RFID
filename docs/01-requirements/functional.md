@@ -41,7 +41,7 @@
 Todo el módulo de análisis, incluidos indicadores, recursos reutilizables y recomendación IA, es exclusivo del Administrador. Usuario y Encargado reciben 403 en sus tres endpoints; el acceso ordinario al inventario y a préstamos conserva sus permisos.
 
 - **RF-25.** La aplicación debe mostrar disponibilidad, uso por período y recursos con baja utilización.
-- **RF-26.** La aplicación debe permitir generar mediante OpenAI una recomendación sobre reutilización o mantenimiento basada en métricas agregadas y candidatos del inventario. Debe permitir ocultarla y volver a mostrarla sin otra llamada; regenerar requiere una acción explícita. Los fallos del proveedor deben mostrarse como errores, sin simular una respuesta de IA mediante reglas locales.
+- **RF-26.** La aplicación debe permitir generar mediante OpenAI una recomendación sobre reutilización, organización del uso o revisión técnica basada en métricas agregadas y recursos del inventario. Las acciones deben apoyarse en evidencia numérica por recurso, diferenciando hechos, limitaciones y propuestas; no limitarse a repetir indicadores ni sugerir recursos inexistentes. Debe permitir ocultarla y volver a mostrarla sin otra llamada; regenerar requiere una acción explícita. Los fallos del proveedor deben mostrarse como errores, sin simular una respuesta de IA mediante reglas locales.
 - **RF-27.** Desde la recomendación, el administrador debe poder consultar las fichas de los recursos sugeridos.
 
 El análisis usa una ventana móvil de 90 días en UTC. La baja utilización se refiere a activos
@@ -50,3 +50,13 @@ operaciones canceladas sin retiro. El uso semanal agrupa retiros confirmados por
 semanas sin movimientos. Las recomendaciones son descriptivas y marcan datos insuficientes
 si no existe evidencia de seguimiento de 90 días para todos los activos sugeridos. Ocultar y
 volver a mostrar la recomendación es una interacción de presentación, sin borrar historial.
+
+El contexto de IA incluye hasta ocho recursos relevantes por uso confirmado, baja utilización
+o revisión; no exige que un recurso carezca de retiros para poder analizarlo. Por recurso se
+agregan retiros de 90 días y de dos ventanas consecutivas de 30 días; las duraciones mediana
+y máxima en horas incluyen solo préstamos finalizados válidos de la cohorte de retiros de
+90 días, con tamaño de muestra explícito. No se envían personas, préstamos individuales,
+plazos ni credenciales, y no se interpreta una duración larga como retraso. Todo el historial
+registrado se analiza con el mismo criterio operativo, sin enviar marcadores internos de
+carga ni calificarlos como modos de demostración. La carga de historia no altera la
+disponibilidad o los préstamos actuales.
