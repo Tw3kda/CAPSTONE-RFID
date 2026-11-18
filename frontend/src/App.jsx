@@ -10,14 +10,17 @@ import { PrestamoForm } from './screens/Prestamo.jsx'
 import { MisRecursos, DetallePrestamo } from './screens/MisRecursos.jsx'
 import { Analisis, Reutilizar } from './screens/Analisis.jsx'
 import { Admin } from './screens/Admin.jsx'
+import { Legal } from './screens/Legal.jsx'
 
 export default function App() {
   const { path, query } = useRoute()
   const { user, ready, error, client } = useSession()
+  const legalTitle = path === '/privacidad' ? 'Política de privacidad y tratamiento de datos personales' : path === '/terminos' ? 'Términos y condiciones de uso' : null
   useEffect(() => {
-    document.title = 'Thesora · Cada recurso, en su lugar'
+    document.title = legalTitle ? `${legalTitle} · Thesora` : 'Thesora · Cada recurso, en su lugar'
     if (user && path.startsWith('/acceso')) navigate('/inicio')
-  }, [path, user])
+  }, [path, user, legalTitle])
+  if (legalTitle) return <Legal privacy={path === '/privacidad'} />
   if (!ready) return <Shell sinNav><PageHeader titulo="Recuperando sesión…" /></Shell>
   if (!user) return path === '/acceso/qr' ? <AccesoQR /> : <Acceso />
   if (error && error.status !== 401) return <Shell sinNav><PageHeader titulo="No se pudo recuperar la sesión" /><div className="container content"><ErrorNotice error={error} retry={() => window.location.reload()} /><button className="btn btn--secondary" onClick={client.logout}>Volver al acceso</button></div></Shell>

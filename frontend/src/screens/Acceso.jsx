@@ -5,6 +5,7 @@ import { navigate } from '../navigation.js'
 import { useSession } from '../hooks.js'
 import { prepareQrCamera, retainQrCamera, releaseQrCamera, stopQrCamera, getQrCameraError, hasQrCamera } from '../qr-camera.js'
 import { createQrDecoder } from '../qr-decoder.js'
+import { LegalFooter } from './Legal.jsx'
 
 function useErrorFocus(error) {
   const target = useRef(null)
@@ -66,6 +67,7 @@ export function Acceso() {
         <button className="btn btn--secondary" disabled={busy || opening}>{busy ? 'Identificando…' : 'Ingresar con ID'}</button>
       </form>
     </div></div>
+    <LegalFooter />
   </Shell>
 }
 
@@ -171,5 +173,6 @@ export function AccesoQR() {
         </form>
       </details>
     </div></div>
+    <LegalFooter />
   </Shell>
 }

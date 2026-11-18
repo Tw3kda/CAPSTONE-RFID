@@ -32,6 +32,7 @@ Los tokens se conservan en `sessionStorage` de la pestaña; la clave no se guard
 
 ## Pantallas y operaciones
 
+- Documentos legales públicos en `/#/terminos` y `/#/privacidad`, accesibles con o sin sesión y sin esperar la recuperación de autenticación. El footer de acceso ID/QR enlaza ambas páginas. El texto HTML reproduce íntegramente los PDF de `docs/00-meta/`, versión 1.0 del 3 de noviembre de 2026, con sus títulos, tablas y listas; se omiten únicamente los encabezados/pies repetidos de paginación. Se conservan el dominio `thesoracol.com` y los contactos que figuran en los documentos, aunque el despliegue actual use otro dominio.
 - Acceso y lectura QR; Inicio con búsqueda, acciones rápidas y actividad real.
 - Inventario con búsqueda por nombre/código, categoría y disponibilidad; ficha con condición y movimientos; mapa de posiciones reales y solicitud de señal LED.
 - Preparación de préstamo propio o delegado para Encargado/Administrador. La búsqueda del destinatario usa nombre o un identificador registrado; el ID interno solo se usa en el payload.
