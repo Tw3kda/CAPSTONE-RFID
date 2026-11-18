@@ -69,13 +69,8 @@ MFRC522DriverSPI driver2{ss_pin2};
 MFRC522 lector2{driver2};
 
 // LECTOR 3 - CAJON 3
-// Va en su propio bus SPI (HSPI), porque este lector no suelta MISO y
-// bloquea a los otros si comparte el bus. Cables: SCK 14, MISO 27,
-// MOSI 13, SDA 25.
-const int8_t BUS3_SCK = 14, BUS3_MISO = 27, BUS3_MOSI = 13;
-SPIClass spiLector3(HSPI);
 MFRC522DriverPinSimple ss_pin3(25);
-MFRC522DriverSPI driver3{ss_pin3, spiLector3};
+MFRC522DriverSPI driver3{ss_pin3};
 MFRC522 lector3{driver3};
 
 // Para agregar un lector: copiar las tres lineas de arriba con otro pin
@@ -97,7 +92,7 @@ static_assert(sizeof(PIN_LED) / sizeof(PIN_LED[0]) == sizeof(LECTORES) / sizeof(
 // TIEMPOS
 // =====================================
 
-#define FIRMWARE "2.0.6"
+#define FIRMWARE "2.0.7"
 
 const unsigned long TIMEOUT          = 800;    // ms sin leer un tag = fue retirado
 const unsigned long TIEMPO_ARRANQUE  = 3000;   // ms iniciales: solo se hace inventario
@@ -747,9 +742,7 @@ void setup() {
     }
   }
 
-  SPI.begin();   // lectores 1 y 2: SCK 18, MISO 19, MOSI 23
-  // Lector 3. Debe iniciarse aqui, con sus pines, antes de PCD_Init.
-  spiLector3.begin(BUS3_SCK, BUS3_MISO, BUS3_MOSI, -1);
+  SPI.begin();   // los tres lectores: SCK 18, MISO 19, MOSI 23
 
   Serial.println();
   Serial.println("================================");
