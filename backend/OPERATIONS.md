@@ -33,8 +33,9 @@ administrator already exists. No default administrator or public registration en
 exists. For production use the same command with `docker-compose.yml` from the trusted
 deployment shell. Subsequent users and roles are managed through the administrator API.
 
-ID login requires both the registered institutional ID and password. Passwords preserve
-whitespace and contain 12–128 characters. Every new API/CLI account requires a password;
+ID login requires both the registered institutional ID and password. Login accepts existing
+passwords of 1–128 characters without trimming whitespace. Creating or resetting passwords
+still requires 12–128 characters. Every new API/CLI account requires a password;
 administrators can reset it using PATCH `clave`, while omission preserves it and null/empty
 is rejected. Responses and validation errors never echo passwords or hashes. Argon2id uses
 the existing cryptography dependency: 19 MiB, two iterations, one lane, a random 16-byte salt,

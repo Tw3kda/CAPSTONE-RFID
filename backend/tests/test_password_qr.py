@@ -200,3 +200,37 @@ def test_card_registration_must_match_identifier_and_explicit_binding_is_require
 def test_malformed_or_unregistered_cards_never_authenticate(client, admin, credential):
     assert client.post("/api/usuarios", headers=admin, json=registration()).status_code == 201
     assert login(client, "qr", credential).status_code == 401
+
+
+def test_id_login_accepts_existing_short_password_but_new_passwords_remain_long(client, admin):
+    import base64
+
+    from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+    from sqlalchemy import text
+
+    from app.database import engine
+    from app.security import PASSWORD_PREFIX, credential_digest
+
+    salt = b"synthetic-salt!!"
+    digest = Argon2id(salt=salt, length=32, iterations=2, lanes=1, memory_cost=19456).derive(
+        b"5678"
+    )
+    encoded = PASSWORD_PREFIX + "$".join(
+        base64.b64encode(part).decode().rstrip("=") for part in (salt, digest)
+    )
+    with engine.begin() as db:
+        db.execute(
+            text(
+                "UPDATE usuario SET identificador_institucional_hash=:identity, "
+                "clave_hash=:hash WHERE id=3"
+            ),
+            {"identity": credential_digest("745678"), "hash": encoded},
+        )
+    body = {"metodo": "id", "credencial": "745678", "clave": "5678"}
+    response = client.post("/api/auth/login", json=body)
+    assert response.status_code == 200
+    assert response.json()["usuario"]["id"] == 3
+    assert client.post("/api/auth/login", json={**body, "clave": "wrong"}).status_code == 401
+    for invalid in ("", "x" * 129):
+        assert client.post("/api/auth/login", json={**body, "clave": invalid}).status_code == 422
+    assert client.patch("/api/usuarios/3", headers=admin, json={"clave": "5678"}).status_code == 422

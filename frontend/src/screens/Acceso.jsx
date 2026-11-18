@@ -62,7 +62,7 @@ export function Acceso() {
         <h2>Opción 2 · ID universitario</h2>
         <p className="note">Escribe tu identificador institucional y tu clave.</p>
         <Field label="ID universitario"><input className="field" value={credential} onChange={(event) => setCredential(event.target.value)} required maxLength={256} autoComplete="username" /></Field>
-        <Field label="Clave"><input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={12} maxLength={128} autoComplete="current-password" /></Field>
+        <Field label="Clave"><input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={128} autoComplete="current-password" /></Field>
         {error && <div ref={errorTarget} tabIndex="-1" className="access-error"><ErrorNotice error={error} /></div>}
         <button className="btn btn--secondary" disabled={busy || opening}>{busy ? 'Identificando…' : 'Ingresar con ID'}</button>
       </form>

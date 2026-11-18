@@ -73,7 +73,7 @@ paths:
               properties:
                 metodo: {type: string, enum: [qr, id]}
                 credencial: {type: string, minLength: 1, maxLength: 256}
-                clave: {type: string, format: password, writeOnly: true, minLength: 12, maxLength: 128}
+                clave: {type: string, format: password, writeOnly: true, minLength: 1, maxLength: 128, description: 'Verifica la clave existente sin imponer la longitud mínima de altas o restablecimientos; no recorta espacios.'}
               additionalProperties: false
               allOf:
                 - if:

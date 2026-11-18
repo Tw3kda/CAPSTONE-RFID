@@ -16,6 +16,7 @@ AssetState = Literal["disponible", "prestado", "en_revision"]
 Nonempty = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 UID = Annotated[str, StringConstraints(pattern=r"^[0-9A-Fa-f]{8,20}$")]
 Password = Annotated[SecretStr, Field(min_length=12, max_length=128)]
+LoginPassword = Annotated[SecretStr, Field(min_length=1, max_length=128)]
 
 
 class Input(BaseModel):
@@ -161,7 +162,7 @@ class Refresh(Input):
 class Login(Input):
     metodo: Literal["qr", "id"]
     credencial: Nonempty = Field(max_length=256)
-    clave: Password | None = None
+    clave: LoginPassword | None = None
 
     @model_validator(mode="after")
     def method_requires_matching_factors(self):
