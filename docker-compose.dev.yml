@@ -1,0 +1,73 @@
+name: ${APP_NAME:?Set APP_NAME in the root .env}-dev
+
+services:
+  db:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the root .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the root .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-migrate
+    build: ./backend
+    environment: &database
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in the root .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the root .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}
+      POSTGRES_HOST: db
+      AUTH_SIGNING_KEY: ${AUTH_SIGNING_KEY:?Generate AUTH_SIGNING_KEY in the root .env}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Generate DATA_ENCRYPTION_KEY in the root .env}
+      SECURE_COOKIES: "false"
+      RETENTION_HOLD: ${RETENTION_HOLD:-false}
+    volumes:
+      - ./backend:/app
+    networks: [data]
+    depends_on:
+      db:
+        condition: service_healthy
+    command: [alembic, upgrade, head]
+
+  backend:
+    container_name: ${APP_NAME:?Set APP_NAME in the root .env}-backend
+    build:
+      context: ./backend
+      target: development
+    environment:
+      <<: *database
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6.1-terra}
+    volumes:
+      - ./backend:/app
+      - ./docs:/docs:ro
+    ports:
+      - "127.0.0.1:${DEV_API_PORT:-8001}:8000"
+    networks: [app, data]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, '8000', --reload, --reload-dir, /app/app]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  db_data:
+
+networks:
+  app:
+  data:
+    internal: true

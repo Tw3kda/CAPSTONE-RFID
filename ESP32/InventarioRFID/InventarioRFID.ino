@@ -1,17 +1,13 @@
 // =====================================================================
-//  INVENTARIO RFID  ->  SUPABASE
+//  INVENTARIO RFID -> API THESORA
 //
-//  Cada lector RC522 vigila un sitio. El ESP32 avisa a Supabase cuando
-//  un tag aparece o desaparece de un lector, mandando el UID en bruto y
-//  el numero de lector. Supabase decide a que recurso corresponde.
+//  Cada lector RC522 vigila una posicion. El ESP32 informa los UID y
+//  canales a la API, que valida los activos y sus prestamos.
+//  El mapeo RFID/posicion se administra en Thesora y se descarga al
+//  conectar y cada 10 s. Una posicion puede contener varios activos.
 //
-//  Que objeto va en que lector NO se escribe aqui: se edita en Supabase
-//  (Table Editor -> recursos, columnas uid_tag y lector). Cada lector
-//  tiene un solo objeto correcto. El ESP32 descarga esa tabla al
-//  encender y cada 10 s, asi que un cambio llega sin volver a cargar
-//  el sketch.
-//
-//  Placa: ESP32 Dev Module.  Libreria: RFID_MFRC522v2.
+//  Placa: ESP32 Dev Module.
+//  Librerias: RFID_MFRC522v2 2.0.6 y ArduinoJson 7.
 // =====================================================================
 
 #include <SPI.h>
@@ -19,6 +15,8 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <ArduinoJson.h>
+#include <time.h>
 #include <MFRC522v2.h>
 #include <MFRC522DriverSPI.h>
 #include <MFRC522DriverPinSimple.h>
@@ -27,15 +25,47 @@
 // CONFIGURACION: EDITAR ESTE BLOQUE
 // =====================================
 
-const char* WIFI_SSID = "TU_WIFI";          // solo redes de 2.4 GHz
-const char* WIFI_PASS = "TU_CLAVE";
+// Las claves van en secrets.h, junto a este archivo. Esta en .gitignore,
+// asi que nunca se sube a GitHub. Contenido:
+//   #define SECRET_WIFI_SSID      "nombre del wifi"   // solo redes de 2.4 GHz
+//   #define SECRET_WIFI_PASS      "clave del wifi"
+//   #define SECRET_DEVICE_API_KEY "clave emitida por Thesora al registrar el ESP32"
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#warning "Falta secrets.h: se usan valores de ejemplo y el ESP32 no se conectara"
+#define SECRET_WIFI_SSID      "TU_WIFI"
+#define SECRET_WIFI_PASS      "TU_CLAVE"
+#define SECRET_DEVICE_API_KEY "TU_CLAVE_DEL_DISPOSITIVO"
+#endif
 
-const char* SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
-const char* SUPABASE_KEY = "TU_ANON_KEY";   // la publica (anon / publishable)
+const char* WIFI_SSID = SECRET_WIFI_SSID;
+const char* WIFI_PASS = SECRET_WIFI_PASS;
 
-// Nombre de este stand. Debe coincidir con recursos.dispositivo_id en
-// Supabase. Solo letras, numeros y guiones.
+const char* API_URL = "https://thesora.redskycol.com/api";
+const char* DEVICE_API_KEY = SECRET_DEVICE_API_KEY;
+
+// Debe coincidir con el dispositivo registrado en Thesora.
+// Solo letras, numeros, guiones y guiones bajos.
 const char* DISPOSITIVO_ID = "stand-01";
+
+// CA oficial: https://pki.goog/repo/certs/gtsr4.pem
+// Cadena del dominio verificada con GTS Root R4. Actualizar si cambia la CA.
+const char API_ROOT_CA[] PROGMEM = R"PEM(
+-----BEGIN CERTIFICATE-----
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2Vz
+IExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQAIgNi
+AATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyi
+QHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvR
+HYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+BBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/g94D
+9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA8GE8
+p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
+-----END CERTIFICATE-----
+)PEM";
 
 // =====================================
 // LECTORES Y LEDS
@@ -74,7 +104,11 @@ static_assert(sizeof(PIN_LED) / sizeof(PIN_LED[0]) == sizeof(LECTORES) / sizeof(
 // TIEMPOS
 // =====================================
 
-#define FIRMWARE "2.0.0"
+#define FIRMWARE "2.1.2"
+
+// true = mostrar cada peticion a la API y cuanto tarda (para diagnosticar).
+// Las senales se piden cada 2 s, asi que genera bastantes lineas.
+const bool DEPURAR_RED = true;
 
 const unsigned long TIMEOUT          = 800;    // ms sin leer un tag = fue retirado
 const unsigned long TIEMPO_ARRANQUE  = 3000;   // ms iniciales: solo se hace inventario
@@ -85,7 +119,7 @@ const unsigned long ESPERA_REINTENTO = 2000;   // tras un envio fallido
 const unsigned long ESPERA_WIFI      = 15000;  // entre intentos de reconexion
 
 const uint8_t MAX_TAGS_POR_LECTOR = 4;
-const uint8_t MAX_RECURSOS        = 32;
+const uint8_t MAX_RECURSOS        = 64;
 const uint8_t MAX_AVISTAMIENTOS   = 16;
 const uint8_t TAM_COLA            = 64;   // eventos que esperan si no hay WiFi
 const uint8_t TAM_LOTE            = 8;    // eventos por peticion
@@ -94,7 +128,7 @@ const uint8_t TAM_LOTE            = 8;    // eventos por peticion
 // ESTRUCTURAS
 // =====================================
 
-// Una fila del mapeo descargado de Supabase.
+// Una fila del mapeo descargado de la API Thesora.
 struct Recurso {
   char    uid[21];   // UID en hexadecimal, mayusculas
   char    id[16];    // 'ACT-004'
@@ -121,6 +155,12 @@ struct Evento {
 };
 
 enum Clase : uint8_t { CL_OK, CL_LUGAR_INCORRECTO, CL_DESCONOCIDO };
+
+enum ResultadoEnvio : uint8_t {
+  ENVIO_OK,          // ACK completo: sacar de la cola
+  ENVIO_REINTENTAR,  // red, servidor, clave...: volver a intentar igual
+  ENVIO_RECHAZADO    // HTTP 400/422: la API nunca lo aceptara tal cual
+};
 
 // =====================================
 // ESTADO
@@ -170,14 +210,17 @@ Clase clasificar(const char* uid, uint8_t lector, char* id, size_t tamId) {
   Clase clase = CL_DESCONOCIDO;
   strlcpy(id, uid, tamId);
 
+  // Un activo aparece una vez por cada lector de su posicion: es correcto
+  // si alguna de sus filas corresponde a este lector.
   xSemaphoreTake(candadoConfig, portMAX_DELAY);
   for (uint8_t i = 0; i < numRecursos; i++) {
     if (strcmp(recursos[i].uid, uid) == 0) {
       strlcpy(id, recursos[i].id, tamId);
-      clase = (recursos[i].lector == 0 || recursos[i].lector == lector)
-                ? CL_OK
-                : CL_LUGAR_INCORRECTO;
-      break;
+      if (recursos[i].lector == 0 || recursos[i].lector == lector) {
+        clase = CL_OK;
+        break;
+      }
+      clase = CL_LUGAR_INCORRECTO;
     }
   }
   xSemaphoreGive(candadoConfig);
@@ -249,7 +292,7 @@ void anotarLectura(const char* uid, uint8_t lector) {
     Serial.printf("%s NO VA EN ESTE SITIO\n", id);
   } else {
     Serial.printf("TAG DESCONOCIDO: %s\n", uid);
-    Serial.println("Para registrarlo: Supabase -> recursos -> uid_tag");
+    Serial.println("Para registrarlo: Thesora -> Administracion -> Activos -> UID RFID");
   }
   Serial.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   Serial.println();
@@ -379,7 +422,7 @@ void guardarConfig() {
   memoria.end();
 }
 
-// Muestra que objeto espera cada lector segun Supabase.
+// Muestra los activos asignados a cada lector segun Thesora.
 void imprimirConfig() {
   Serial.printf("[CONFIG] Mapeo de %s:\n", DISPOSITIVO_ID);
 
@@ -406,202 +449,212 @@ void imprimirConfig() {
 }
 
 // =====================================
-// SUPABASE
+// API THESORA
 // =====================================
 // Todo lo de esta seccion corre en la tarea de red, nunca en el loop.
 
+String rutaDispositivo(const char* operacion) {
+  return String("/dispositivos/") + DISPOSITIVO_ID + "/" + operacion;
+}
+
 // Hace una peticion y devuelve el codigo HTTP (negativo = no hubo conexion).
 int peticion(const char* metodo, const String& ruta, const char* cuerpo,
-             const char* aceptar, String* respuesta) {
-
-  http.setReuse(true);            // misma conexion para todas las peticiones
-  http.setConnectTimeout(8000);
-  http.setTimeout(8000);
-
-  if (!http.begin(clienteTLS, String(SUPABASE_URL) + ruta)) {
+             String* respuesta) {
+  // TLS necesita una hora valida. SNTP se sincroniza sin frenar los lectores;
+  // hasta entonces se conserva la configuracion y el lote para reintentarlos.
+  if (time(nullptr) < 1704067200) {
+    Serial.println("[API] Esperando sincronizacion de hora para verificar TLS");
     return -1;
   }
 
-  http.addHeader("apikey", SUPABASE_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
-  if (aceptar) {
-    http.addHeader("Accept", aceptar);
-  }
-  if (cuerpo) {
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("Prefer", "return=minimal");
-  }
+  http.setReuse(true);
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
+
+  if (!http.begin(clienteTLS, String(API_URL) + ruta)) return -1;
+
+  http.addHeader("X-Device-Key", DEVICE_API_KEY);
+  http.addHeader("Accept", "application/json");
+  if (cuerpo) http.addHeader("Content-Type", "application/json");
+
+  unsigned long inicio = millis();
+  if (DEPURAR_RED) Serial.printf("[RED] -> %s %s\n", metodo, ruta.c_str());
 
   int codigo = http.sendRequest(metodo, (uint8_t*)cuerpo, cuerpo ? strlen(cuerpo) : 0);
-
+  bool sinLeer = false;   // quedo un cuerpo sin leer en la conexion
   if (codigo > 0) {
-    String texto = http.getString();
-    // 409 no es un fallo: es un evento que ya estaba guardado.
-    if (codigo >= 400 && codigo != 409) {
-      Serial.printf("[SUPABASE] Error %d en %s: %s\n", codigo, ruta.c_str(), texto.c_str());
+    if (codigo >= 400) {
+      Serial.printf("[API] Error HTTP %d en %s\n", codigo, ruta.c_str());
     }
-    if (respuesta) *respuesta = texto;
-    http.end();
+    // Una respuesta 204 (latido) no trae cuerpo ni Content-Length. Pedir su
+    // cuerpo con la conexion abierta deja la tarea de red esperando hasta que
+    // el servidor cierre, y mientras tanto no se envian eventos.
+    bool hayCuerpo = codigo != 204 && http.getSize() != 0;
+    if (hayCuerpo && respuesta) {
+      *respuesta = http.getString();
+    } else if (hayCuerpo) {
+      sinLeer = true;
+    }
   } else {
-    Serial.printf("[SUPABASE] Sin respuesta (%s)\n", http.errorToString(codigo).c_str());
-    http.end();
-    clienteTLS.stop();   // la proxima peticion abre una conexion nueva
+    Serial.printf("[API] Sin respuesta (%s)\n", http.errorToString(codigo).c_str());
   }
-
+  http.end();
+  if (DEPURAR_RED) {
+    Serial.printf("[RED] <- %d en %lu ms\n", codigo, (unsigned long)(millis() - inicio));
+  }
+  // Sin leer, esos bytes se mezclarian con la siguiente respuesta: cerrar.
+  if (codigo <= 0 || sinLeer) clienteTLS.stop();
   return codigo;
 }
 
-// Manda un lote de eventos. true = ya no hay que reintentarlo.
-bool enviarLote(const Evento* lote, uint8_t cantidad) {
-  static char cuerpo[2048];
-  size_t n = 0;
+// Solo un ACK completo del backend permite sacar este lote de la cola.
+ResultadoEnvio enviarLote(const Evento* lote, uint8_t cantidad) {
+  if (cantidad == 0 || cantidad > TAM_LOTE) return ENVIO_REINTENTAR;
+
+  JsonDocument documento;
+  documento["arranque"] = arranque;
+  JsonArray eventos = documento["eventos"].to<JsonArray>();
   unsigned long ahora = millis();
 
-  n += snprintf(cuerpo + n, sizeof(cuerpo) - n, "[");
-
-  for (uint8_t i = 0; i < cantidad && n < sizeof(cuerpo); i++) {
+  for (uint8_t i = 0; i < cantidad; i++) {
     const Evento& e = lote[i];
-
-    n += snprintf(cuerpo + n, sizeof(cuerpo) - n,
-                  "%s{\"dispositivo_id\":\"%s\",\"arranque\":%lu,\"seq\":%lu,\"evento\":\"%s\",",
-                  i ? "," : "", DISPOSITIVO_ID,
-                  (unsigned long)arranque, (unsigned long)e.seq, NOMBRE_EVENTO[e.tipo]);
-    if (n >= sizeof(cuerpo)) break;
-
+    JsonObject evento = eventos.add<JsonObject>();
+    evento["secuencia"] = e.seq;
+    evento["tipo"] = NOMBRE_EVENTO[e.tipo];
+    evento["antiguedad_ms"] = (uint32_t)(ahora - e.ms);
     if (e.tipo == EV_INICIO) {
-      n += snprintf(cuerpo + n, sizeof(cuerpo) - n, "\"uid\":null,\"lector\":null,");
+      evento["uid"] = nullptr;
+      evento["canal"] = nullptr;
     } else {
-      n += snprintf(cuerpo + n, sizeof(cuerpo) - n, "\"uid\":\"%s\",\"lector\":%u,", e.uid, e.lector);
+      evento["uid"] = e.uid;
+      evento["canal"] = e.lector;
     }
-    if (n >= sizeof(cuerpo)) break;
-
-    // En vez de la hora (el ESP32 no tiene reloj) se manda hace cuanto
-    // ocurrio. Supabase calcula la hora real al recibirlo.
-    n += snprintf(cuerpo + n, sizeof(cuerpo) - n, "\"antiguedad_ms\":%lu}",
-                  (unsigned long)(ahora - e.ms));
   }
 
-  if (n < sizeof(cuerpo)) {
-    n += snprintf(cuerpo + n, sizeof(cuerpo) - n, "]");
+  static char cuerpo[2048];
+  if (documento.overflowed() || measureJson(documento) >= sizeof(cuerpo)) {
+    Serial.println("[API] No se pudo serializar el lote; se conserva para reintentar");
+    return ENVIO_REINTENTAR;
   }
-  if (n >= sizeof(cuerpo)) {
-    Serial.println("[SUPABASE] Lote demasiado grande: descartado");
-    return true;
-  }
+  serializeJson(documento, cuerpo, sizeof(cuerpo));
 
-  int codigo = peticion("POST", "/rest/v1/eventos", cuerpo, nullptr, nullptr);
-
-  if (codigo >= 200 && codigo < 300) {
-    Serial.printf("[SUPABASE] %u evento(s) guardado(s)\n", cantidad);
-    return true;
-  }
-  if (codigo == 409) {
-    return true;   // un envio anterior si llego: ya estan guardados
-  }
+  String respuesta;
+  int codigo = peticion("POST", rutaDispositivo("eventos"), cuerpo, &respuesta);
   if (codigo == 400 || codigo == 422) {
-    Serial.println("[SUPABASE] Lote rechazado: descartado");
-    return true;
+    // La API valida el lote entero antes de guardar nada, asi que un
+    // rechazo no deja eventos a medias. Ej.: canal no registrado en Thesora.
+    Serial.printf("[API] Rechazado: %.160s\n", respuesta.c_str());
+    return ENVIO_RECHAZADO;
   }
-  return false;    // sin red, clave incorrecta, etc.: se reintenta
+  if (codigo != 202) {
+    return ENVIO_REINTENTAR;
+  }
+
+  JsonDocument confirmacion;
+  if (deserializeJson(confirmacion, respuesta)
+      || !confirmacion["aceptados"].is<uint32_t>()
+      || !confirmacion["duplicados"].is<uint32_t>()) {
+    Serial.println("[API] ACK invalido; se conserva el lote");
+    return ENVIO_REINTENTAR;
+  }
+  uint32_t aceptados = confirmacion["aceptados"];
+  uint32_t duplicados = confirmacion["duplicados"];
+  if (aceptados > cantidad || duplicados > cantidad || aceptados + duplicados != cantidad) {
+    Serial.println("[API] ACK incompleto; se conserva el lote");
+    return ENVIO_REINTENTAR;
+  }
+
+  Serial.printf("[API] Lote confirmado: %lu nuevo(s), %lu duplicado(s)\n",
+                (unsigned long)aceptados, (unsigned long)duplicados);
+  return ENVIO_OK;
 }
 
-// Descarga que tags van en este stand y en que lector.
-// La respuesta se pide en CSV: una linea "uid_tag,lector,id" por recurso.
+// Descarga el mapeo JSON. Una respuesta invalida no sustituye la copia local.
 bool descargarConfig() {
-  String ruta = String("/rest/v1/recursos?select=uid_tag,lector,id&uid_tag=not.is.null&order=uid_tag&dispositivo_id=eq.") + DISPOSITIVO_ID;
-  String csv;
-
-  if (peticion("GET", ruta, nullptr, "text/csv", &csv) != 200) {
+  String respuesta;
+  if (peticion("GET", rutaDispositivo("configuracion"), nullptr, &respuesta) != 200) {
+    return false;
+  }
+  JsonDocument documento;
+  if (deserializeJson(documento, respuesta) || !documento.is<JsonArray>()
+      || documento.size() > MAX_RECURSOS) {
+    Serial.println("[API] Configuracion invalida o mayor que MAX_RECURSOS; se conserva la anterior");
     return false;
   }
 
   static Recurso nuevos[MAX_RECURSOS];
-  uint8_t cantidad = 0;
   memset(nuevos, 0, sizeof(nuevos));
-
-  int inicio = 0;
-  while (inicio < (int)csv.length() && cantidad < MAX_RECURSOS) {
-    int fin = csv.indexOf('\n', inicio);
-    if (fin < 0) fin = csv.length();
-
-    String linea = csv.substring(inicio, fin);
-    inicio = fin + 1;
-    linea.trim();
-
-    int coma1 = linea.indexOf(',');
-    int coma2 = linea.indexOf(',', coma1 + 1);
-    if (coma1 <= 0 || coma2 < 0) continue;
-
-    String uid = linea.substring(0, coma1);
-    String id  = linea.substring(coma2 + 1);
-    id.replace("\"", "");
-
-    // Descarta el encabezado y cualquier cosa que no sea un UID.
-    bool esHex = uid.length() <= 20;
+  uint8_t cantidad = 0;
+  for (JsonObjectConst fila : documento.as<JsonArrayConst>()) {
+    if (!fila["uid"].is<const char*>() || !fila["codigo"].is<const char*>()
+        || !fila["activo_id"].is<uint64_t>() || fila["activo_id"].as<uint64_t>() == 0
+        || !fila["canal"].is<uint8_t>()) {
+      Serial.println("[API] Fila de configuracion invalida; se conserva la anterior");
+      return false;
+    }
+    String uid = fila["uid"].as<const char*>();
+    const char* codigo = fila["codigo"];
+    uint8_t canal = fila["canal"];
+    bool esHex = uid.length() >= 8 && uid.length() <= 20;
     for (unsigned int i = 0; i < uid.length() && esHex; i++) {
       esHex = isxdigit((unsigned char)uid[i]);
     }
-    if (!esHex) continue;
-
-    Recurso& r = nuevos[cantidad++];
-    strlcpy(r.uid, uid.c_str(), sizeof(r.uid));
-    strlcpy(r.id, id.c_str(), sizeof(r.id));
-    r.lector = (uint8_t)linea.substring(coma1 + 1, coma2).toInt();   // vacio = 0
+    // Un canal mayor que NUM_LECTORES no invalida el resto: se guarda y
+    // imprimirConfig avisa de que este stand no tiene ese lector.
+    if (!esHex || !codigo[0] || strlen(codigo) >= sizeof(nuevos[0].id) || canal < 1) {
+      Serial.println("[API] UID, codigo o canal de configuracion invalido; se conserva la anterior");
+      return false;
+    }
+    uid.toUpperCase();
+    Recurso& recurso = nuevos[cantidad++];
+    strlcpy(recurso.uid, uid.c_str(), sizeof(recurso.uid));
+    strlcpy(recurso.id, codigo, sizeof(recurso.id));
+    recurso.lector = canal;
   }
 
   bool cambio = !configLista
                 || cantidad != numRecursos
                 || memcmp(nuevos, recursos, sizeof(nuevos)) != 0;
-
   if (cambio) {
     xSemaphoreTake(candadoConfig, portMAX_DELAY);
     memcpy(recursos, nuevos, sizeof(recursos));
     numRecursos = cantidad;
     configLista = true;
     xSemaphoreGive(candadoConfig);
-
     guardarConfig();
     imprimirConfig();
   }
-
   return true;
 }
 
-// Pregunta que lectores deben encender su LED.
+// La API devuelve {"canales":[1,2,...]} para este dispositivo autenticado.
 bool leerSenales() {
-  String ruta = String("/rest/v1/senales?select=lector&dispositivo_id=eq.") + DISPOSITIVO_ID;
-  String csv;
-
-  if (peticion("GET", ruta, nullptr, "text/csv", &csv) != 200) {
+  String respuesta;
+  if (peticion("GET", rutaDispositivo("senales"), nullptr, &respuesta) != 200) {
+    return false;
+  }
+  JsonDocument documento;
+  if (deserializeJson(documento, respuesta) || !documento["canales"].is<JsonArray>()) {
     return false;
   }
 
   uint32_t mascara = 0;
-  int inicio = 0;
-  while (inicio < (int)csv.length()) {
-    int fin = csv.indexOf('\n', inicio);
-    if (fin < 0) fin = csv.length();
-
-    long lector = csv.substring(inicio, fin).toInt();   // el encabezado da 0
-    inicio = fin + 1;
-
-    if (lector >= 1 && lector <= NUM_LECTORES) {
-      mascara |= 1UL << (lector - 1);
-    }
+  for (JsonVariantConst valor : documento["canales"].as<JsonArrayConst>()) {
+    if (!valor.is<uint8_t>()) return false;
+    uint8_t canal = valor.as<uint8_t>();
+    if (canal < 1 || canal > NUM_LECTORES) return false;
+    mascara |= 1UL << (canal - 1);
   }
-
   mascaraSenal = mascara;
   return true;
 }
 
 void enviarLatido() {
-  char cuerpo[256];
+  char cuerpo[128];
   snprintf(cuerpo, sizeof(cuerpo),
-           "{\"p_dispositivo\":\"%s\",\"p_arranque\":%lu,\"p_firmware\":\"%s\",\"p_ip\":\"%s\",\"p_rssi\":%d}",
-           DISPOSITIVO_ID, (unsigned long)arranque, FIRMWARE,
-           WiFi.localIP().toString().c_str(), (int)WiFi.RSSI());
-
-  peticion("POST", "/rest/v1/rpc/latido", cuerpo, nullptr, nullptr);
+           "{\"arranque\":%lu,\"firmware\":\"%s\",\"rssi\":%d}",
+           (unsigned long)arranque, FIRMWARE, (int)WiFi.RSSI());
+  peticion("POST", rutaDispositivo("heartbeat"), cuerpo, nullptr);
 }
 
 // =====================================
@@ -613,6 +666,7 @@ void enviarLatido() {
 void tareaRed(void*) {
   Evento  lote[TAM_LOTE];
   uint8_t enLote = 0;
+  bool    unoAUno = false;   // tras un rechazo: enviar de uno en uno
 
   bool conectado = false;
   unsigned long ultimoWifi     = millis();
@@ -653,7 +707,7 @@ void tareaRed(void*) {
       ultimoIntento  = millis() - ESPERA_REINTENTO;
     }
 
-    // EVENTOS. Un lote no cambia hasta que Supabase lo acepta, y solo
+    // EVENTOS. Un lote no cambia hasta que la API lo confirma, y solo
     // entonces se saca el siguiente de la cola. Durante el arranque no
     // se envia nada, para que el inventario inicial viaje completo.
 
@@ -665,9 +719,27 @@ void tareaRed(void*) {
         if (enLote > 0) ultimoIntento = millis() - ESPERA_REINTENTO;
       }
 
+      // Si la API rechaza un lote, se reenvia de uno en uno para descartar
+      // solo el evento invalido. Asi no bloquea la cola para siempre.
       if (enLote > 0 && toca(ultimoIntento, ESPERA_REINTENTO)) {
-        if (enviarLote(lote, enLote)) {
-          enLote = 0;
+        uint8_t n = unoAUno ? 1 : enLote;
+        ResultadoEnvio r = enviarLote(lote, n);
+
+        if (r == ENVIO_RECHAZADO && n > 1) {
+          unoAUno = true;
+          ultimoIntento = millis() - ESPERA_REINTENTO;
+        } else if (r != ENVIO_REINTENTAR) {
+          if (r == ENVIO_RECHAZADO) {
+            Serial.printf("[API] Evento %lu descartado (%s, canal %u)\n",
+                          (unsigned long)lote[0].seq, NOMBRE_EVENTO[lote[0].tipo], lote[0].lector);
+          }
+          enLote -= n;
+          memmove(lote, lote + n, enLote * sizeof(Evento));
+          if (enLote == 0) {
+            unoAUno = false;
+          } else {
+            ultimoIntento = millis() - ESPERA_REINTENTO;
+          }
         }
       }
     }
@@ -715,18 +787,24 @@ void setup() {
   Serial.println("================================");
   Serial.println("       INVENTARIO RFID");
   Serial.println("================================");
+  Serial.printf("Firmware %s\n", FIRMWARE);
 
   // INICIAR LOS LECTORES
 
   for (uint8_t i = 0; i < NUM_LECTORES; i++) {
-    LECTORES[i]->PCD_Init();
-    delay(50);
-
-    byte version = (byte)LECTORES[i]->PCD_GetVersion();
-    if (version == 0x00 || version == 0xFF) {
-      Serial.printf("LECTOR %u: NO RESPONDE (revisar cableado)\n", i + 1);
+    // Hasta 3 intentos: un RC522 puede tardar mas que el ESP32 en arrancar.
+    byte version = 0xFF;
+    for (uint8_t intento = 0; intento < 3 && (version == 0x00 || version == 0xFF); intento++) {
+      LECTORES[i]->PCD_Init();
+      delay(50);
+      version = (byte)LECTORES[i]->PCD_GetVersion();
+    }
+    if (version == 0xFF) {
+      Serial.printf("LECTOR %u: NO RESPONDE (0xFF: no llega nada por MISO; revisar MISO, SDA y que este conectado)\n", i + 1);
+    } else if (version == 0x00) {
+      Serial.printf("LECTOR %u: NO RESPONDE (0x00: revisar 3.3V y GND; si estan bien, unir su RST a 3.3V)\n", i + 1);
     } else {
-      Serial.printf("LECTOR %u: listo\n", i + 1);
+      Serial.printf("LECTOR %u: listo (version 0x%02X)\n", i + 1, version);
     }
   }
 
@@ -752,13 +830,15 @@ void setup() {
     Serial.println("[CONFIG] Aun sin mapeo: se descargara al conectar");
   }
 
-  // El primer evento de cada encendido: Supabase olvida lo que este
-  // stand tenia y lo reconstruye con los PRESENTE que siguen.
+  // El primer evento identifica el arranque. Los PRESENTE siguientes son
+  // inventario inicial; no confirman devoluciones de prestamos.
   encolarEvento(EV_INICIO, nullptr, 0);
 
   // WIFI
 
-  clienteTLS.setInsecure();   // no verifica el certificado (prototipo)
+  clienteTLS.setCACert(API_ROOT_CA);
+  clienteTLS.setHandshakeTimeout(10);   // segundos; por defecto son 120
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");  // SNTP asincrono para validar TLS
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);

@@ -1,0 +1,131 @@
+Project Thesora {
+  database_type: 'PostgreSQL'
+}
+
+Table rol {
+  id bigint [pk, increment]
+  nombre varchar(30) [not null, unique]
+}
+
+Table usuario {
+  id bigint [pk, increment]
+  rol_id bigint [not null, ref: > rol.id]
+  nombre varchar(150) [not null]
+  correo text [note: 'Protegido mediante cifrado']
+  credencial_uid text [unique, note: 'HMAC del QR canónico E000000000+ID numérico registrado; excluye el sufijo dinámico de seis hexadecimales. Nullable para cuentas sin carné. Las credenciales legadas completas requieren reasociación explícita para admitir cambios de sufijo']
+  identificador_institucional_hash text [unique, note: 'HMAC del ID institucional registrado explícitamente por administrador, obligatorio en altas nuevas y no eliminable por API; nullable solo para preservar cuentas legadas pendientes de registrar ID. Independiente del QR, nunca derivado de él']
+  clave_hash text [note: 'Argon2id PHC con sal aleatoria; obligatorio en altas API/CLI, nullable para cuentas legadas sin acceso por ID hasta asignación. Nunca se expone']
+  consentimiento_at timestamptz
+  activo boolean [not null, default: true]
+}
+
+Table auditoria {
+  id bigint [pk, increment]
+  usuario_id bigint [ref: > usuario.id]
+  accion varchar(80) [not null]
+  entidad varchar(50) [not null]
+  entidad_id varchar(64) [not null, note: 'Admite IDs numéricos y IDs de dispositivos']
+  creado_at timestamptz [not null]
+}
+
+Table categoria {
+  id bigint [pk, increment]
+  nombre varchar(100) [not null, unique]
+}
+
+Table espacio {
+  id bigint [pk, increment]
+  nombre varchar(120) [not null]
+}
+
+Table gabinete {
+  id bigint [pk, increment]
+  espacio_id bigint [not null, ref: > espacio.id]
+  nombre varchar(120) [not null]
+}
+
+Table posicion {
+  id bigint [pk, increment]
+  gabinete_id bigint [not null, ref: > gabinete.id]
+  estante varchar(60) [not null]
+  codigo varchar(60) [not null]
+
+  indexes {
+    (gabinete_id, estante, codigo) [unique]
+  }
+}
+
+Table activo {
+  id bigint [pk, increment]
+  categoria_id bigint [not null, ref: > categoria.id]
+  posicion_asignada_id bigint [not null, ref: > posicion.id]
+  nombre varchar(150) [not null]
+  rfid_uid varchar(20) [not null, unique]
+  condicion varchar(100)
+  ultima_revision_at timestamptz
+  estado varchar(30) [not null, note: 'disponible | prestado | en_revision']
+  presente boolean [note: 'Última evidencia física en posición asignada; null sin observación válida. Disponibilidad efectiva: estado disponible y presente distinto de false.']
+  presencia_actualizada_at timestamptz [note: 'Momento de observación, no de recepción; evita revertir presencia con eventos offline antiguos.']
+}
+
+Table prestamo {
+  id bigint [pk, increment]
+  activo_id bigint [not null, ref: > activo.id]
+  responsable_id bigint [not null, ref: > usuario.id]
+  entregado_por_id bigint [not null, ref: > usuario.id]
+  retiro_at timestamptz
+  devolucion_esperada_at timestamptz [not null]
+  devolucion_at timestamptz
+  operacion_iniciada_at timestamptz [not null, note: 'Rechaza confirmaciones físicas anteriores a la preparación/inicio de devolución; se renueva al cancelar una operación']
+  estado varchar(30) [not null, note: 'pendiente_retiro | activo | validando_devolucion | esperando_posicion | devuelto | cancelado']
+}
+
+// PostgreSQL: índice único parcial uq_prestamo_abierto_activo sobre activo_id
+// donde estado NOT IN ('devuelto','cancelado'); un activo no admite dos préstamos abiertos.
+
+// Un ESP32 admite varios lectores MFRC522 (canales físicos).
+Table dispositivo {
+  id varchar(64) [pk]
+  api_key_hash text [not null]
+  firmware varchar(32)
+  ultimo_heartbeat timestamptz
+  ultimo_rssi int
+}
+
+Table lector {
+  id bigint [pk, increment]
+  dispositivo_id varchar(64) [not null, ref: > dispositivo.id]
+  canal int [not null, note: 'Número físico del lector dentro del ESP32']
+  posicion_id bigint [not null, ref: > posicion.id]
+  senal_hasta timestamptz [note: 'LED de localización encendido hasta este instante']
+
+  indexes {
+    (dispositivo_id, canal) [unique]
+  }
+}
+
+Table evento {
+  id bigint [pk, increment]
+  dispositivo_id varchar(64) [not null, ref: > dispositivo.id]
+  lector_id bigint [ref: > lector.id, note: 'Nulo en evento INICIO']
+  activo_id bigint [ref: > activo.id, note: 'Nulo si el RFID es desconocido']
+  prestamo_id bigint [ref: > prestamo.id]
+  uid_leido varchar(20)
+  tipo varchar(24) [not null, note: 'INICIO | PRESENTE | DEVUELTO | RETIRADO']
+  validacion varchar(24) [note: 'correcto | posicion_incorrecta | desconocido | no_aplica']
+  arranque bigint [not null]
+  secuencia bigint [not null]
+  ocurrido_at timestamptz [not null]
+  recibido_at timestamptz [not null]
+
+  indexes {
+    (dispositivo_id, arranque, secuencia) [unique]
+  }
+}
+
+Table webhook_suscripcion {
+  id bigint [pk, increment]
+  url text [not null]
+  eventos text [not null]
+  secreto_hash text [not null]
+}
